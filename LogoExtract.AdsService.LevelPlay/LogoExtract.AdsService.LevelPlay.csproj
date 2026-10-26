@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unity LevelPlay (ironSource) ad provider. Copied from the sibling DocScanner repo's already-slimmed-down
+       DocScanner.AdsService.LevelPlay.csproj (2026-10-27, namespace renamed): that project originally shipped
+       the full Unity Ads network adapter too, then had it removed (2026-10-14) once DocScanner's own LevelPlay
+       dashboard confirmed only the ironSource network was enabled there, cutting ~24% of DEX. Starting
+       LogoExtract directly from the slimmed version rather than the original: no reason to re-introduce the
+       Unity Ads adapter unless this app's own dashboard later turns that network on, in which case
+       com.unity3d.ads-mediation:unityads-adapter + com.unity3d.ads:unity-ads (+ their transitive deps: okhttp,
+       androidx.work, datastore, protobuf, kotlinx-coroutines, webkit, cronet) need adding back, or that network
+       will silently never fill. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LogoExtract.AdsService</RootNamespace>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LogoExtract.AdsService.Core\LogoExtract.AdsService.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AndroidMavenLibrary Include="com.unity3d.ads-mediation:mediation-sdk" Version="9.6.1" />
+    <AndroidMavenLibrary Include="com.unity3d.ads-mediation:adquality-sdk" Version="9.10.0" Bind="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Java Dependency Verification (XA4242) named these as the exact NuGet packages that already bind the
+         transitive deps of the AndroidMavenLibrary items above; versions carried over unchanged from the
+         DocScanner repo's own already-verified resolution. -->
+    <PackageReference Include="Xamarin.GooglePlayServices.Basement" Version="118.10.0.3" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Base" Version="118.10.0.3" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Tasks" Version="118.4.1.3" />
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.19.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Annotation" Version="1.10.0.1" />
+    <PackageReference Include="Xamarin.Google.Guava.ListenableFuture" Version="1.0.0.32" />
+    <PackageReference Include="Xamarin.AndroidX.Collection" Version="1.6.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Concurrent.Futures" Version="1.3.0.4" />
+    <PackageReference Include="Xamarin.AndroidX.Interpolator" Version="1.0.0.37" />
+    <PackageReference Include="Xamarin.AndroidX.Browser" Version="1.10.0.1" />
+    <PackageReference Include="Xamarin.GooglePlayServices.Ads.Identifier" Version="118.3.0.3" />
+    <PackageReference Include="Xamarin.Kotlin.StdLib" Version="2.4.0.1" />
+  </ItemGroup>
+
+</Project>

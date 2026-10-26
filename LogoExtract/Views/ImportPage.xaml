@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             x:Class="LogoExtract.Views.ImportPage"
+             x:DataType="vm:ImportViewModel"
+             Title="Nhập ảnh">
+    <Grid>
+        <VerticalStackLayout Padding="24" Spacing="16" VerticalOptions="Center">
+            <Label Text="Chụp hoặc chọn ảnh áo có logo. Có thể chọn nhiều ảnh cùng lúc để xử lý theo lô."
+                   TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}"
+                   HorizontalTextAlignment="Center" Margin="0,0,0,20" />
+            <Button Text="📷  Chụp ảnh" Command="{Binding CaptureCommand}" HeightRequest="56" CornerRadius="28"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
+            <Button Text="🖼️  Chọn từ thư viện (nhiều ảnh)" Command="{Binding PickCommand}" HeightRequest="56" CornerRadius="28"
+                    BackgroundColor="Transparent" BorderWidth="1.5"
+                    BorderColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+        </VerticalStackLayout>
+        <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" VerticalOptions="Center" />
+    </Grid>
+</ContentPage>

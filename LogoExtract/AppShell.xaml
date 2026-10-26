@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="LogoExtract.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:LogoExtract.Views"
+    Shell.FlyoutBehavior="Disabled"
+    Shell.NavBarIsVisible="True"
+    Title="Logo Extract">
+
+    <ShellContent
+        Title="Trang chủ"
+        ContentTemplate="{DataTemplate views:HomePage}"
+        Route="HomePage" />
+
+</Shell>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Provider-agnostic core of the ads library: IAdsClient / AdsClient, the shared AdBannerSurface View +
+       Handler, IAdProvider, DisabledAdProvider, and the AdsProviderOptions base. Copied from the sibling
+       DocScanner repo's DocScanner.AdsService.Core (2026-10-27, namespace renamed), which already went through
+       the one-project-per-network split (2026-10-12) to avoid an unused network's SDK ever becoming a candidate
+       dependency / DEX bloat. Only LevelPlay is referenced by LogoExtract for now. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LogoExtract.AdsService</RootNamespace>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
+    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="10.0.90" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Pure .NET, no Android/MAUI reference: runs and unit-tests on a PC, same split DocScanner.Core uses. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT: image decode/encode/pixel access (RGBA PNG in particular) and basic bitmap ops, cross-platform
+         (works in net9.0 PC unit tests AND inside the Android app). Chosen over hand-writing a PNG codec (the
+         DocScanner.Shared approach) because this app's timeline does not afford it; revisit only if SkiaSharp's
+         DEX/APK size cost turns out to matter (same "measure the real AAB, don't guess" standard as
+         DocScanner/PdfReader's own dex work). -->
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <!-- MIT: on-device inference for the u2netp background-removal model (Resources/Raw/Models/u2netp.onnx in
+         the app project). Referenced here too (not just from the Android app project) so segmentation logic is
+         unit-testable on a PC, same split as the rest of this project. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+  </ItemGroup>
+
+</Project>

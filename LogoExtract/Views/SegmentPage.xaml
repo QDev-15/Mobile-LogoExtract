@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             xmlns:views="clr-namespace:LogoExtract.Views"
+             x:Class="LogoExtract.Views.SegmentPage"
+             x:DataType="vm:SegmentViewModel"
+             Title="Tách logo khỏi nền">
+    <Grid RowDefinitions="*,Auto">
+        <Grid Grid.Row="0">
+            <views:MaskEditorView x:Name="Editor" />
+            <VerticalStackLayout IsVisible="{Binding IsBusy}" VerticalOptions="Center" Spacing="10"
+                                 BackgroundColor="#80000000" Padding="20">
+                <ActivityIndicator IsRunning="{Binding IsBusy}" Color="White" />
+                <Label Text="{Binding BusyText}" TextColor="White" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="16" ColumnDefinitions="*,*,*" ColumnSpacing="8"
+              BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}">
+            <Button Grid.Column="0" Text="🖌️ Thêm" Clicked="OnAddMode"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}"
+                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+            <Button Grid.Column="1" Text="🧽 Xoá" Clicked="OnRemoveMode"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}"
+                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+            <Button Grid.Column="2" Text="Xong" Clicked="OnDone"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
+        </Grid>
+    </Grid>
+</ContentPage>

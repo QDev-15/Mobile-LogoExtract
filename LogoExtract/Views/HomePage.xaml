@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             xmlns:ads="clr-namespace:LogoExtract.AdsService;assembly=LogoExtract.AdsService.Core"
+             x:Class="LogoExtract.Views.HomePage"
+             x:DataType="vm:ItemsViewModel"
+             Title="Logo Extract">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Padding="20,16" ColumnDefinitions="*,Auto"
+              BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}">
+            <Label Text="Logo Extract" FontSize="24" FontAttributes="Bold"
+                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        </Grid>
+
+        <!-- Empty state -->
+        <VerticalStackLayout Grid.Row="1" IsVisible="{Binding IsEmpty}"
+                              VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Padding="40">
+            <Label Text="Chưa có logo nào" FontSize="20" FontAttributes="Bold" HorizontalTextAlignment="Center"
+                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+            <Label Text="Bấm nút + bên dưới để chụp hoặc chọn ảnh áo có logo." HorizontalTextAlignment="Center"
+                   TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+        </VerticalStackLayout>
+
+        <!-- Items list -->
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" IsVisible="{Binding IsEmpty, Converter={StaticResource InvertedBoolConverter}}"
+                        Margin="12">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:ItemRow">
+                    <Grid Padding="8" ColumnDefinitions="64,*,Auto" RowDefinitions="Auto">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.OpenCommand}"
+                                                   CommandParameter="{Binding .}" />
+                        </Grid.GestureRecognizers>
+                        <Border Grid.Column="0" StrokeShape="RoundRectangle 10" HeightRequest="56" WidthRequest="56"
+                                Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}">
+                            <Image Source="{Binding ThumbPath}" Aspect="AspectFill" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" Padding="12,0" VerticalOptions="Center" Spacing="4">
+                            <Label Text="{Binding Name}" FontAttributes="Bold"
+                                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                            <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
+                                    BackgroundColor="{Binding StateColor}" Stroke="Transparent">
+                                <Label Text="{Binding StateText}" TextColor="White" FontSize="12" />
+                            </Border>
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="&#x2715;" FontSize="18" VerticalOptions="Center" Padding="10"
+                               TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteCommand}"
+                                                       CommandParameter="{Binding .}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Bottom bar: ad banner placeholder + FAB -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto">
+            <ads:AdBannerSurface Grid.Row="0" />
+            <Button Grid.Row="1" Text="+  Nhập ảnh" Command="{Binding ImportCommand}"
+                    Margin="20,12,20,20" HeightRequest="52" CornerRadius="26"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
+        </Grid>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Android only for now, same decision as the sibling DocScanner/PdfReader repos (owner has no Mac,
+		     iOS to be added later from a fresh `dotnet new maui` template if ever needed). -->
+		<TargetFrameworks>net10.0-android</TargetFrameworks>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>LogoExtract</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<MauiXamlInflator>SourceGen</MauiXamlInflator>
+
+		<ApplicationTitle>Logo Extract</ApplicationTitle>
+		<ApplicationId>btk.logoextract</ApplicationId>
+
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+
+		<!-- Ads mode / master switch: same two properties and meaning as DocScanner/PdfReader (see those repos'
+		     csproj comments for the full reasoning). Dev (default) uses sandbox/no ad units; only Pro (passed
+		     explicitly for the one build that goes to Play) uses real ones from RealAdsConfig.cs. -->
+		<AdsMode Condition="'$(AdsMode)' == ''">Dev</AdsMode>
+		<DefineConstants Condition="'$(AdsMode)' == 'Pro'">$(DefineConstants);ADS_MODE_PRO</DefineConstants>
+		<AdsEnabled Condition="'$(AdsEnabled)' == ''">true</AdsEnabled>
+		<DefineConstants Condition="'$(AdsEnabled)' == 'false'">$(DefineConstants);ADS_DISABLED</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+		<UseInterpreter>false</UseInterpreter>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+		<EnableLLVM>true</EnableLLVM>
+		<AndroidLinkTool>r8</AndroidLinkTool>
+		<AndroidLinkMode>Full</AndroidLinkMode>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0A0B0D" />
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0A0B0D" BaseSize="160,160" />
+		<MauiImage Include="Resources\Images\*" />
+		<MauiFont Include="Resources\Fonts\*" />
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- AdsService.Core needs >= 10.0.90 (same issue/fix as DocScanner/PdfReader): pin explicitly, the
+		     workload's own $(MauiVersion) default resolves lower and causes an NU1605 downgrade error. -->
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+		<!-- MIT -->
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<!-- MIT: on-device background-removal model inference (see LogoExtract.Core/Segmentation). -->
+		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+		<!-- MIT: SKCanvasView for Views/MaskEditorView.cs's raw-SkiaSharp touch-paint brush tool. -->
+		<PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="3.116.1" />
+		<!-- NU1107 version conflict: SkiaSharp.Views.Maui.Controls (via Microsoft.Maui.Core) wants 2.9.2.1,
+		     LogoExtract.AdsService.LevelPlay (via GooglePlayServices.Basement -> AndroidX.Fragment) wants
+		     2.11.0.1; pin to the higher one directly as NU1107 itself suggested. -->
+		<PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core" Version="2.11.0.1" />
+		<!-- Duplicate-class D8 error (androidx.fragment.app.FragmentKt defined in both fragment.aar and
+		     fragment-ktx.aar): SkiaSharp.Views.Maui.Controls (via Microsoft.Maui.Core) and
+		     LogoExtract.AdsService.LevelPlay (via GooglePlayServices.Basement) resolve Fragment/Fragment.Ktx to
+		     different versions whose native AARs don't dedupe cleanly; pin both explicitly to force one
+		     resolved version everywhere (same fix shape as DocScanner's own CameraX/Fragment pin). -->
+		<PackageReference Include="Xamarin.AndroidX.Fragment" Version="1.9.0" />
+		<PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\LogoExtract.Core\LogoExtract.Core.csproj" />
+		<ProjectReference Include="..\LogoExtract.AdsService.Core\LogoExtract.AdsService.Core.csproj" />
+		<ProjectReference Include="..\LogoExtract.AdsService.LevelPlay\LogoExtract.AdsService.LevelPlay.csproj" />
+	</ItemGroup>
+
+</Project>

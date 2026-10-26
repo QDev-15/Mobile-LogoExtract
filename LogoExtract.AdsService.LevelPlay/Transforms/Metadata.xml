@@ -1,0 +1,24 @@
+<metadata>
+  <!-- Unity LevelPlay (ironSource): the real classes.jar (checked directly, 2026-10-07) has hundreds of classes
+       sitting straight in the top-level "com.ironsource" package with 1-2 character obfuscated names (R8/ProGuard
+       flattened namespace output, e.g. com.ironsource.A, com.ironsource.b7): not under any "impl"/"internal"
+       sub-package the way AppLovin's were, so they cannot be excluded by a package-name prefix. None of this is
+       public API (the real API lives in named sub-packages, e.g. com.ironsource.mediationsdk.*); exact-match
+       (not starts-with) on "com.ironsource" itself removes only these flat obfuscated classes and leaves every
+       named sub-package alone. -->
+  <remove-node path="/api/package[@name='com.ironsource']" />
+
+  <!-- com.ironsource.mediationsdk.adunit.adapter.internal.* is the SPI a third-party mediated network's adapter
+       implements (AdMob, Meta...), not something a LevelPlay integrator ever calls directly, and some of its
+       interfaces reference the now-removed flat obfuscated types above in their own signatures, so it fails to
+       bind regardless. Dropped as a whole internal sub-tree, same reasoning as com.applovin.impl above. -->
+  <remove-node path="/api/package[starts-with(@name, 'com.ironsource.mediationsdk.adunit.adapter')]" />
+
+  <!-- com.ironsource.mediationsdk.sdk.I*SmashListener ("smash" is ironSource's own internal name for one mediated
+       network in their waterfall): same adapter-facing SPI as above, not public API (the public listener classes
+       for app code are the newer "LevelPlay*" ones under com.unity3d.mediation). The auto-binder generates a
+       duplicate member in its own event-bridge "Implementor" helper for all three (CS0102): an interface
+       overload the binder cannot disambiguate, same class of problem as AppLovin's MaxAd/MaxError, and again not
+       needed for this provider. -->
+  <remove-node path="/api/package[@name='com.ironsource.mediationsdk.sdk']" />
+</metadata>
