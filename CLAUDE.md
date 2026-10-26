@@ -18,8 +18,9 @@ không cần thiết cho v1 — xem lịch sử bên dưới). Package `btk.logo
 
 Thư mục `LogoExtract-prototype/` (nay nằm trong repo này, đã thêm vào git 2026-10-27) là nơi prototype Python/ONNX
 ban đầu, `samples/` có 4 ảnh áo thật owner cung cấp để test — vẫn còn dùng được cho test sau này. Bản `.venv/` của
-prototype (môi trường Python ~1.2GB) không commit vào git (xem `.gitignore`), chỉ còn ở bản sibling gốc ngoài repo
-nếu owner cần chạy lại script Python.
+prototype (môi trường Python ~1.2GB) không commit vào git (xem `.gitignore`) và bản sibling gốc ngoài repo đã bị
+xoá (2026-10-27, owner yêu cầu, trùng lặp với bản trong repo) — `requirements.txt` mới thêm (chưa pin version,
+suy ra từ `import` trong 2 script) để owner tự `pip install -r requirements.txt` tạo lại venv nếu cần chạy lại.
 
 Kế hoạch chi tiết đầy đủ (pipeline, tính năng, CÓ THỂ/KHÔNG THỂ làm, lộ trình): `LogoExtract-prototype/PLAN.md`.
 
