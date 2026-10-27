@@ -16,8 +16,8 @@ public static class BackgroundPriority
 {
     public static T RunLowPriority<T>(Func<T> work)
     {
-        int original = Android.OS.Process.GetThreadPriority(Android.OS.Process.MyTid());
-        Android.OS.Process.SetThreadPriority((int)Android.OS.ThreadPriority.Background);
+        Android.OS.ThreadPriority original = Android.OS.Process.GetThreadPriority(Android.OS.Process.MyTid());
+        Android.OS.Process.SetThreadPriority(Android.OS.ThreadPriority.Background);
         try
         {
             return work();
