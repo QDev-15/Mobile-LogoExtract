@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using LogoExtract.Core;
 using LogoExtract.Core.Imaging;
 using LogoExtract.Core.Segmentation;
+using LogoExtract.Services;
 using LogoExtract.Views;
 using SkiaSharp;
 
@@ -12,6 +13,7 @@ namespace LogoExtract.ViewModels;
 public partial class SegmentViewModel : ObservableObject
 {
     private readonly ItemStore _store;
+    private readonly AppDialog _dialog;
     // Lazy<T>, resolved from inside LoadAsync's Task.Run (see MauiProgram's own comment on this
     // registration): first access builds the ONNX Runtime session, real I/O + CPU work that must never run on
     // the UI thread during page construction/navigation.
@@ -28,10 +30,11 @@ public partial class SegmentViewModel : ObservableObject
     // only existed once segmentation finished.
     private int _generation;
 
-    public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation)
+    public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog)
     {
         _store = store;
         _segmentation = segmentation;
+        _dialog = dialog;
     }
 
     [ObservableProperty]
@@ -73,35 +76,47 @@ public partial class SegmentViewModel : ObservableObject
         IsBusy = true;
         BusyText = "Đang tách nền...";
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        // EXIF-oriented decode (ExifOrientation.cs): a bare SKBitmap.Decode ignores the EXIF rotation tag, so a
-        // camera photo taken upright would otherwise show sideways everywhere this image is used -- found in code
-        // review 2026-10-27, no real device photo had actually been tested through this path yet to surface it.
-        // Split out of the segmentation Task.Run (they used to be one combined call) specifically so _image is
-        // set -- and StartRegionSelect becomes usable -- as soon as this fast decode finishes, without waiting
-        // for segmentation (slow, and not preemptible -- see RunAutoSegmentAsync's own comment).
-        SKBitmap image = await Task.Run(() => ExifOrientation.DecodeOriented(path));
-        Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
-        _image = image;
-
-        if (item.CutoutFile != null)
+        try
         {
-            sw.Restart();
-            // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it
-            // does not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. If
-            // that file is missing or unreadable despite CutoutFile being set (deleted/corrupted externally),
-            // fall through to running segmentation fresh rather than handing the editor a null mask (silent dead
-            // screen -- the original bug here, found in review, not observed on-device).
-            // Forced to Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing
-            // below reads this mask's bytes directly assuming that exact channel order.
-            SKBitmap? savedMask = await Task.Run(() => BitmapIO.DecodeAsRgba8888(maskPath));
-            Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms");
-            if (savedMask != null)
+            // EXIF-oriented decode (ExifOrientation.cs): a bare SKBitmap.Decode ignores the EXIF rotation tag, so a
+            // camera photo taken upright would otherwise show sideways everywhere this image is used -- found in code
+            // review 2026-10-27, no real device photo had actually been tested through this path yet to surface it.
+            // Split out of the segmentation Task.Run (they used to be one combined call) specifically so _image is
+            // set -- and StartRegionSelect becomes usable -- as soon as this fast decode finishes, without waiting
+            // for segmentation (slow, and not preemptible -- see RunAutoSegmentAsync's own comment).
+            SKBitmap image = await Task.Run(() => ExifOrientation.DecodeOriented(path));
+            Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
+            _image = image;
+
+            if (item.CutoutFile != null)
             {
-                _mask = savedMask;
-                IsBusy = false;
-                ImagesReady?.Invoke(image, savedMask);
-                return;
+                sw.Restart();
+                // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it
+                // does not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. If
+                // that file is missing or unreadable despite CutoutFile being set (deleted/corrupted externally),
+                // fall through to running segmentation fresh rather than handing the editor a null mask (silent dead
+                // screen -- the original bug here, found in review, not observed on-device).
+                // Forced to Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing
+                // below reads this mask's bytes directly assuming that exact channel order.
+                SKBitmap? savedMask = await Task.Run(() => BitmapIO.DecodeAsRgba8888(maskPath));
+                Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms");
+                if (savedMask != null)
+                {
+                    _mask = savedMask;
+                    IsBusy = false;
+                    ImagesReady?.Invoke(image, savedMask);
+                    return;
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            // Must never leave IsBusy stuck true forever -- see RunAutoSegmentAsync's own catch for why (same
+            // silent-fire-and-forget-hang shape, just on the decode step instead of the ONNX call).
+            Android.Util.Log.Error("LogoExtractPerf", $"[Load] decode FAILED: {ex}");
+            IsBusy = false;
+            await _dialog.AlertAsync("Lỗi", "Không thể mở ảnh.");
+            return;
         }
         await RunAutoSegmentAsync();
     }
@@ -120,7 +135,28 @@ public partial class SegmentViewModel : ObservableObject
         IsBusy = true;
         BusyText = "Đang tách nền...";
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        SKBitmap mask = await Task.Run(() => _segmentation.Value.Segment(image).AlphaMask);
+        SKBitmap mask;
+        try
+        {
+            mask = await Task.Run(() => _segmentation.Value.Segment(image).AlphaMask);
+        }
+        catch (Exception ex)
+        {
+            // Must never leave IsBusy stuck true forever (owner's report, 2026-10-27: a Release/AAB build
+            // installed on a real device "spins as if hung" during segmentation). This Task.Run had no catch, so
+            // a Release-only failure here -- e.g. AndroidLinkMode=Full's IL trimming removing something ONNX
+            // Runtime's C# bindings reach only via reflection, a risk this project's own PdfReader.csproj already
+            // documents for that same setting -- threw unobserved on this fire-and-forget call and silently froze
+            // the busy spinner forever instead of surfacing anything. Logged at Error so a plain
+            // `adb logcat -s LogoExtractPerf:*` catches it instead of needing to scroll past Info noise.
+            Android.Util.Log.Error("LogoExtractPerf", $"[Load] segmentation FAILED: {ex}");
+            if (generation == _generation)
+            {
+                IsBusy = false;
+                await _dialog.AlertAsync("Lỗi", "Không thể tách nền. Thử lại hoặc dùng \"Chọn vùng\" để tô tay.");
+            }
+            return;
+        }
         Android.Util.Log.Info("LogoExtractPerf", $"[Load] segmentation total: {sw.ElapsedMilliseconds}ms");
         if (generation != _generation)
         {
@@ -204,12 +240,28 @@ public partial class SegmentViewModel : ObservableObject
         // keeps a sliver of surrounding fabric in the crop rather than slicing straight through the logo's own
         // edge if the user's strokes ran a little tight.
         SKRectI cropRect = PadAndClamp(bounds.Value, image.Width, image.Height, 0.20f);
-        SKBitmap newMask = await Task.Run(() =>
+        SKBitmap newMask;
+        try
         {
-            using SKBitmap cropped = CropBitmap(image, cropRect);
-            using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
-            return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
-        });
+            newMask = await Task.Run(() =>
+            {
+                using SKBitmap cropped = CropBitmap(image, cropRect);
+                using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
+                return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
+            });
+        }
+        catch (Exception ex)
+        {
+            // Same never-leave-IsBusy-stuck-forever reasoning as RunAutoSegmentAsync's own catch.
+            Android.Util.Log.Error("LogoExtractPerf", $"[Load] region re-segment FAILED: {ex}");
+            if (generation == _generation)
+            {
+                IsBusy = false;
+                IsSelectingRegion = false;
+                await _dialog.AlertAsync("Lỗi", "Không thể tách theo vùng đã chọn.");
+            }
+            return;
+        }
         if (generation != _generation) { newMask.Dispose(); return; } // StartRegionSelect fired again before this finished -- see _generation's own comment
         IsBusy = false;
         IsSelectingRegion = false;

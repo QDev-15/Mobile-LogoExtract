@@ -23,6 +23,10 @@
             </Border>
         </Grid>
 
+        <!-- Segmentation-failure alert (SegmentViewModel's catch blocks, added 2026-10-27): same overlay used by
+             every other page (mobile-app-design.md §5.5), spans all 3 rows so it can sit above the toolbars too. -->
+        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="3" />
+
         <!-- Chế độ bình thường (sửa mask kết quả): Thêm / Xoá / Chọn vùng / Xong, mỗi nút icon + tên (design
              pass, 2026-10-27: "các icon ở phần toolbar bottom cần có cả icon và name giống như docscanner"),
              cùng 1 thanh thay vì nút "Chọn vùng & tách lại" full-width tách rời như trước. -->
