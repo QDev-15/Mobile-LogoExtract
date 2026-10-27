@@ -43,7 +43,7 @@ public sealed class ItemStore
         try
         {
             if (!File.Exists(path)) return false;
-            value = JsonSerializer.Deserialize<T>(File.ReadAllText(path));
+            value = (T?)JsonSerializer.Deserialize(File.ReadAllText(path), typeof(T), AppJsonContext.Default);
             return value != null;
         }
         catch (IOException) { return false; }
@@ -110,7 +110,7 @@ public sealed class ItemStore
 
     private void Save(LogoItem item)
     {
-        AtomicWrite(Path.Combine(ItemFolder(item.Id), "item.json"), JsonSerializer.Serialize(item));
+        AtomicWrite(Path.Combine(ItemFolder(item.Id), "item.json"), JsonSerializer.Serialize(item, typeof(LogoItem), AppJsonContext.Default));
         lock (_cacheGate) _cache[item.Id] = item;
     }
 
@@ -139,7 +139,7 @@ public sealed class ItemStore
         lock (_batchGate)
         {
             _batches[batch.Id] = batch;
-            AtomicWrite(Path.Combine(_root, "batches.json"), JsonSerializer.Serialize(_batches.Values.ToList()));
+            AtomicWrite(Path.Combine(_root, "batches.json"), JsonSerializer.Serialize(_batches.Values.ToList(), typeof(List<BatchGroup>), AppJsonContext.Default));
         }
         return batch;
     }

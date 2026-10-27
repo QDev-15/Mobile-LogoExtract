@@ -34,11 +34,28 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddSingleton(_ => new ItemStore(Path.Combine(FileSystem.AppDataDirectory, "items")));
-		builder.Services.AddSingleton<ISegmentationService>(_ =>
+		// Lazy<T>, not a plain Singleton factory: copying the 4.5MB model out of the APK and building/optimizing
+		// the ONNX Runtime session graph is real I/O + CPU work (found on a real device, 2026-10-27: the whole
+		// UI froze on first opening the segment screen, well past a minute, no ANR because nothing was waiting
+		// on input at the time). A Singleton factory runs the FIRST time anything resolves this service, which
+		// for SegmentViewModel's own constructor injection is Shell's own page-construction step during
+		// navigation -- on the UI thread, before SegmentViewModel.LoadAsync's own Task.Run ever gets a chance to
+		// push it off that thread. Lazy<T> defers the actual work to the first .Value access, which
+		// SegmentViewModel now makes from inside its own Task.Run instead of the constructor.
+		builder.Services.AddSingleton(_ => new Lazy<ISegmentationService>(() =>
 		{
+			// Console.WriteLine does NOT reach logcat on this Release build (confirmed on-device, 2026-10-27:
+			// Android.Util.Log.Info does, Console.WriteLine never showed up at all, even hours later) --
+			// Android.Util.Log.Info used here instead for that reason alone, not a style preference.
+			Android.Util.Log.Info("LogoExtractPerf", "[U2Net] Lazy<ISegmentationService> factory starting");
+			var sw = System.Diagnostics.Stopwatch.StartNew();
 			string modelPath = EnsureModelCopied();
-			return new U2NetSegmentationService(modelPath);
-		});
+			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] EnsureModelCopied: {sw.ElapsedMilliseconds}ms");
+			sw.Restart();
+			var service = new U2NetSegmentationService(modelPath);
+			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] new InferenceSession: {sw.ElapsedMilliseconds}ms");
+			return service;
+		}));
 
 		builder.Services.AddTransient<ItemsViewModel>();
 		builder.Services.AddTransient<ImportViewModel>();

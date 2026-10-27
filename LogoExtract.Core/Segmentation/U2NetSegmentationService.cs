@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
@@ -24,8 +25,11 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
 
     public SegmentationResult Segment(SKBitmap image)
     {
+        var sw = Stopwatch.StartNew();
         using SKBitmap resized = image.Resize(new SKImageInfo(InputSize, InputSize), SKSamplingOptions.Default)
             ?? throw new InvalidOperationException("Resize failed");
+        Console.WriteLine($"[U2Net] resize: {sw.ElapsedMilliseconds}ms (source {image.Width}x{image.Height})");
+        sw.Restart();
 
         var input = new DenseTensor<float>([1, 3, InputSize, InputSize]);
         for (int y = 0; y < InputSize; y++)
@@ -38,10 +42,14 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
                 input[0, 2, y, x] = (c.Blue / 255f - Mean[2]) / Std[2];
             }
         }
+        Console.WriteLine($"[U2Net] build input tensor: {sw.ElapsedMilliseconds}ms");
+        sw.Restart();
 
         string inputName = _session.InputMetadata.Keys.First();
         using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> outputs =
             _session.Run([NamedOnnxValue.CreateFromTensor(inputName, input)]);
+        Console.WriteLine($"[U2Net] session.Run: {sw.ElapsedMilliseconds}ms");
+        sw.Restart();
         // u2net has 6 deep-supervision side outputs plus the final fused one; the FIRST output ("d0" in the
         // original model) is the fused, highest-quality one -- confirmed by inspecting session.OutputMetadata
         // order and by eyeballing results against the other 6 on the same sample photos (2026-10-27).
@@ -56,6 +64,8 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
                 if (v > max) max = v;
             }
         float range = Math.Max(max - min, 1e-6f);
+        Console.WriteLine($"[U2Net] min/max scan: {sw.ElapsedMilliseconds}ms");
+        sw.Restart();
 
         // Rgba8888, not Gray8: confirmed on-device (emulator, 2026-10-27) that SKCanvas.DrawCircle onto a Gray8
         // SKBitmap is a silent no-op (no exception, no crash, no visible effect) -- MaskEditorView's brush tool
@@ -69,8 +79,12 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
                 small.SetPixel(x, y, new SKColor(v, v, v));
             }
 
+        Console.WriteLine($"[U2Net] build mask bitmap: {sw.ElapsedMilliseconds}ms");
+        sw.Restart();
+
         SKBitmap fullSize = small.Resize(new SKImageInfo(image.Width, image.Height), SKSamplingOptions.Default)
             ?? throw new InvalidOperationException("Resize failed");
+        Console.WriteLine($"[U2Net] upscale mask to full size: {sw.ElapsedMilliseconds}ms");
         return new SegmentationResult(fullSize);
     }
 

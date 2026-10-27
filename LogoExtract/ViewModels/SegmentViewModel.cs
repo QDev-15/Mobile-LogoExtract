@@ -12,12 +12,15 @@ namespace LogoExtract.ViewModels;
 public partial class SegmentViewModel : ObservableObject
 {
     private readonly ItemStore _store;
-    private readonly ISegmentationService _segmentation;
+    // Lazy<T>, resolved from inside LoadAsync's Task.Run (see MauiProgram's own comment on this
+    // registration): first access builds the ONNX Runtime session, real I/O + CPU work that must never run on
+    // the UI thread during page construction/navigation.
+    private readonly Lazy<ISegmentationService> _segmentation;
     private LogoItem? _item;
     private SKBitmap? _image;
     private SKBitmap? _mask;
 
-    public SegmentViewModel(ItemStore store, ISegmentationService segmentation)
+    public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation)
     {
         _store = store;
         _segmentation = segmentation;
@@ -36,11 +39,17 @@ public partial class SegmentViewModel : ObservableObject
 
     public MaskEditorView.BrushMode Mode { get; private set; } = MaskEditorView.BrushMode.Add;
 
-    partial void OnItemIdChanged(string value) => _ = LoadAsync();
+    partial void OnItemIdChanged(string value)
+    {
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] OnItemIdChanged: '{value}'");
+        _ = LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] LoadAsync start, ItemId='{ItemId}'");
         LogoItem? item = _store.Get(ItemId);
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] _store.Get returned: {(item == null ? "NULL" : item.Id)}");
         if (item == null) return;
         _item = item;
         string folder = _store.ItemFolder(item.Id);
@@ -49,13 +58,18 @@ public partial class SegmentViewModel : ObservableObject
 
         IsBusy = true;
         BusyText = "Đang tách nền...";
+        Android.Util.Log.Info("LogoExtractPerf", "[Load] before Task.Run");
         (SKBitmap image, SKBitmap mask) = await Task.Run(() =>
         {
+            Android.Util.Log.Info("LogoExtractPerf", "[Load] Task.Run started");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             // EXIF-oriented decode (ExifOrientation.cs): a bare SKBitmap.Decode ignores the EXIF rotation tag,
             // so a camera photo taken upright would otherwise show sideways everywhere this image is used --
             // found in code review 2026-10-27, no real device photo had actually been tested through this path
             // yet to surface it.
             SKBitmap image = ExifOrientation.DecodeOriented(path);
+            Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
+            sw.Restart();
             // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it
             // does not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. If
             // that file is missing or unreadable despite CutoutFile being set (deleted/corrupted externally),
@@ -64,9 +78,14 @@ public partial class SegmentViewModel : ObservableObject
             // Forced to Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing
             // below reads this mask's bytes directly assuming that exact channel order.
             SKBitmap? savedMask = item.CutoutFile != null ? BitmapIO.DecodeAsRgba8888(maskPath) : null;
-            SKBitmap mask = savedMask ?? _segmentation.Segment(image).AlphaMask;
+            Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms (CutoutFile={item.CutoutFile ?? "null"})");
+            sw.Restart();
+            Android.Util.Log.Info("LogoExtractPerf", "[Load] about to access _segmentation.Value");
+            SKBitmap mask = savedMask ?? _segmentation.Value.Segment(image).AlphaMask;
+            Android.Util.Log.Info("LogoExtractPerf", $"[Load] segmentation total: {sw.ElapsedMilliseconds}ms");
             return (image, mask);
         });
+        Android.Util.Log.Info("LogoExtractPerf", "[Load] Task.Run returned");
         _image = image;
         _mask = mask;
         IsBusy = false;
