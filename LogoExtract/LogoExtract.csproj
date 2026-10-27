@@ -43,7 +43,7 @@
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
 		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
-		<EnableLLVM>true</EnableLLVM>
+		<EnableLLVM>false</EnableLLVM>
 		<AndroidLinkTool>r8</AndroidLinkTool>
 		<AndroidLinkMode>Full</AndroidLinkMode>
 	</PropertyGroup>
