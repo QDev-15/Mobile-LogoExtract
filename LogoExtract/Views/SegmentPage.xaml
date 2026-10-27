@@ -6,7 +6,7 @@
              x:Class="LogoExtract.Views.SegmentPage"
              x:DataType="vm:SegmentViewModel"
              Title="Tách logo khỏi nền">
-    <Grid RowDefinitions="*,Auto">
+    <Grid RowDefinitions="*,Auto,Auto">
         <Grid Grid.Row="0">
             <views:MaskEditorView x:Name="Editor" />
             <VerticalStackLayout IsVisible="{Binding IsBusy}" VerticalOptions="Center" Spacing="10"
@@ -14,19 +14,37 @@
                 <ActivityIndicator IsRunning="{Binding IsBusy}" Color="White" />
                 <Label Text="{Binding BusyText}" TextColor="White" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
+            <!-- Region-select mode: model đã tách sai (vd tách cả áo khỏi nền thay vì riêng logo) thì người
+                 dùng tô thô 1 vùng bao quanh logo ở đây, ảnh gốc được crop theo vùng đó rồi tách lại. Owner's
+                 report, 2026-10-27: "tách logo ra áo. nó lại tách áo ra khỏi nền". -->
+            <Border IsVisible="{Binding IsSelectingRegion}" VerticalOptions="Start" HorizontalOptions="Center"
+                    Margin="0,16,0,0" Padding="14,8" BackgroundColor="#CC000000" StrokeShape="RoundRectangle 20" Stroke="Transparent">
+                <Label Text="Tô vùng chứa logo rồi bấm Xác nhận" TextColor="White" FontSize="13" />
+            </Border>
         </Grid>
 
-        <Grid Grid.Row="1" Padding="16" ColumnDefinitions="*,*,*" ColumnSpacing="8"
-              BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}">
-            <Button Grid.Column="0" Text="🖌️ Thêm" Clicked="OnAddMode"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}"
-                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-            <Button Grid.Column="1" Text="🧽 Xoá" Clicked="OnRemoveMode"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}"
-                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-            <Button Grid.Column="2" Text="Xong" Clicked="OnDone"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
-                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
+        <!-- Chế độ bình thường (sửa mask kết quả): Thêm / Xoá / Chọn vùng / Xong, mỗi nút icon + tên (design
+             pass, 2026-10-27: "các icon ở phần toolbar bottom cần có cả icon và name giống như docscanner"),
+             cùng 1 thanh thay vì nút "Chọn vùng & tách lại" full-width tách rời như trước. -->
+        <Grid Grid.Row="1" IsVisible="{Binding IsSelectingRegion, Converter={StaticResource InvertedBoolConverter}}"
+              ColumnDefinitions="*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="4" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Brush}" Text="Thêm" Clicked="OnAddMode" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Remove}" Text="Xoá" Clicked="OnRemoveMode" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.CropFree}" Text="Chọn vùng" Command="{Binding StartRegionSelectCommand}" />
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Checked}" Text="Xong" IsActive="True" Clicked="OnDone" />
+        </Grid>
+
+        <!-- Chế độ chọn vùng: chỉ 2 nút, không có Thêm/Xoá/Xong (những cái đó quay lại sau khi tách theo vùng xong). -->
+        <Grid Grid.Row="2" IsVisible="{Binding IsSelectingRegion}"
+              ColumnDefinitions="*,*" HeightRequest="68" Padding="0,2,0,10"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="2" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Close}" Text="Huỷ" Clicked="OnCancelRegion" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Check}" Text="Xác nhận vùng" IsActive="True" Clicked="OnConfirmRegion" />
         </Grid>
     </Grid>
 </ContentPage>

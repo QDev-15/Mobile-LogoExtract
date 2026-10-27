@@ -33,6 +33,21 @@ public sealed class MaskEditorView : SKCanvasView
     private BrushMode _mode = BrushMode.Add;
     private float _brushRadiusPx = 40;
 
+    // Pinch-zoom + pan state (owner's request, 2026-10-27: "thêm chức năng zoom to thu nhỏ ... để chọn cho
+    // chuẩn" -- brushing the small region-select box, or a fine mask edge, is hard to do accurately at
+    // fit-to-screen scale on a real multi-MP photo). Applied on top of FitTransform's own fit-to-canvas scale,
+    // not a replacement for it.
+    private const float MinZoom = 1f;
+    private const float MaxZoom = 6f;
+    private float _zoom = 1f;
+    private float _panX, _panY; // canvas-pixel offset, applied after fit+zoom
+    private readonly Dictionary<long, SKPoint> _activeTouches = [];
+    private bool _singleTouchDrawing;
+    private float _pinchStartDistance;
+    private float _pinchStartZoom;
+    private SKPoint _pinchStartMidpoint;
+    private SKPoint _pinchStartPan;
+
     public MaskEditorView()
     {
         EnableTouchEvents = true;
@@ -46,15 +61,32 @@ public sealed class MaskEditorView : SKCanvasView
     /// <summary>Takes ownership of <paramref name="image"/> and <paramref name="mask"/>: disposes whatever this
     /// view was previously showing (a view can be reused across items via dependency-injected transient pages
     /// in some navigation patterns; without this, re-opening the segment screen leaked the previous item's
-    /// bitmaps) before adopting the new ones.</summary>
+    /// bitmaps) before adopting the new ones. This is the ONLY place <see cref="_image"/>/<see cref="_mask"/>
+    /// get disposed, deliberately: there is no separate Unload() that disposes them from SegmentPage's
+    /// OnDisappearing anymore. They are the SAME SKBitmap objects SegmentViewModel keeps in its own fields
+    /// (handed over by reference, never copied), so a page-level Unload() used to dispose them on EVERY
+    /// disappear, including the ordinary forward navigation to EditPage, leaving SegmentViewModel holding
+    /// disposed-but-non-null references the moment the user came back and tapped "Chọn vùng và tách lại". Owner's
+    /// report, 2026-10-27: a SIGSEGV crash in libSkiaSharp.so's sk_bitmap_get_info, from StartRegionSelect
+    /// reading _image.Width/.Height on exactly that freed bitmap. Disposal ownership now belongs entirely to
+    /// SegmentViewModel/this method's own replace-on-reload logic.</summary>
     public void Load(SKBitmap image, SKBitmap mask)
     {
-        _image?.Dispose();
+        // ReferenceEquals check: SegmentViewModel's region-select flow (2026-10-27) calls Load() a second/third
+        // time for the SAME item with the SAME original-photo SKBitmap instance (only the mask changes). Without
+        // this guard, `_image?.Dispose()` would dispose the very object the `image` parameter also points to,
+        // then `_image = image` would adopt an already-disposed bitmap -- first paint after that throws
+        // ObjectDisposedException. A genuinely new image (the normal first-load case) still gets disposed as before.
+        bool samePhoto = ReferenceEquals(_image, image);
+        if (!samePhoto) _image?.Dispose();
         _mask?.Dispose();
         _tintedOverlay?.Dispose();
         _image = image;
         _mask = mask;
         _tintedOverlay = BuildTintedOverlay(mask);
+        // Only reset zoom/pan for a genuinely new photo -- switching into/out of region-select mode on the SAME
+        // photo keeps whatever the user was already zoomed into, so they don't lose their place.
+        if (!samePhoto) { _zoom = 1f; _panX = 0f; _panY = 0f; }
         InvalidateSurface();
     }
 
@@ -87,16 +119,72 @@ public sealed class MaskEditorView : SKCanvasView
     /// caller owns disposing it (same bitmap passed into <see cref="Load"/>).</summary>
     public SKBitmap? CurrentMask => _mask;
 
+    /// <summary>Tracks every active finger by its own touch Id (SkiaSharp gives each a stable Id across its
+    /// Pressed/Moved/Released sequence) so 1 finger can draw while a 2nd simultaneously turns the gesture into a
+    /// pinch, same as every other photo app's zoom gesture.</summary>
     private void OnTouch(object? sender, SKTouchEventArgs e)
     {
-        if (e.ActionType is not (SKTouchAction.Pressed or SKTouchAction.Moved) || _image == null || _mask == null || _tintedOverlay == null)
+        if (_image == null || _mask == null || _tintedOverlay == null) { e.Handled = true; return; }
+
+        switch (e.ActionType)
         {
-            e.Handled = true;
-            return;
+            case SKTouchAction.Pressed:
+                _activeTouches[e.Id] = e.Location;
+                if (_activeTouches.Count == 1)
+                {
+                    _singleTouchDrawing = true;
+                    DrawBrushAt(e.Location);
+                }
+                else
+                {
+                    // A 2nd (or 3rd+, ignored) finger just landed: abandon any single-finger draw in progress
+                    // and start tracking a pinch from the first 2 fingers' current positions.
+                    _singleTouchDrawing = false;
+                    SKPoint[] pts = [.. _activeTouches.Values];
+                    _pinchStartDistance = MathF.Max(Distance(pts[0], pts[1]), 1f);
+                    _pinchStartZoom = _zoom;
+                    _pinchStartMidpoint = Midpoint(pts[0], pts[1]);
+                    _pinchStartPan = new SKPoint(_panX, _panY);
+                }
+                break;
+
+            case SKTouchAction.Moved:
+                if (!_activeTouches.ContainsKey(e.Id)) break;
+                _activeTouches[e.Id] = e.Location;
+                if (_activeTouches.Count >= 2)
+                {
+                    SKPoint[] pts = [.. _activeTouches.Values];
+                    float distance = Distance(pts[0], pts[1]);
+                    _zoom = Math.Clamp(_pinchStartZoom * (distance / _pinchStartDistance), MinZoom, MaxZoom);
+                    SKPoint mid = Midpoint(pts[0], pts[1]);
+                    _panX = _pinchStartPan.X + (mid.X - _pinchStartMidpoint.X);
+                    _panY = _pinchStartPan.Y + (mid.Y - _pinchStartMidpoint.Y);
+                    InvalidateSurface();
+                }
+                else if (_singleTouchDrawing)
+                {
+                    DrawBrushAt(e.Location);
+                }
+                break;
+
+            case SKTouchAction.Released:
+            case SKTouchAction.Cancelled:
+                _activeTouches.Remove(e.Id);
+                // Dropping from 2 fingers to 1 (pinch ending) must NOT resume drawing with the remaining
+                // finger -- it's wherever it happened to be mid-pinch, not a deliberate brush stroke start.
+                // _singleTouchDrawing only turns true again from a fresh Pressed with exactly 1 finger down.
+                if (_activeTouches.Count == 0) _singleTouchDrawing = false;
+                break;
         }
+        e.Handled = true;
+    }
+
+    private void DrawBrushAt(SKPoint location)
+    {
         (float scale, float offX, float offY) = FitTransform();
-        float imgX = (e.Location.X - offX) / scale;
-        float imgY = (e.Location.Y - offY) / scale;
+        if (scale <= 0 || _mask == null || _tintedOverlay == null) return;
+        float imgX = (location.X - offX) / scale;
+        float imgY = (location.Y - offY) / scale;
         float radiusInImagePx = _brushRadiusPx / scale;
 
         bool add = _mode == BrushMode.Add;
@@ -113,15 +201,20 @@ public sealed class MaskEditorView : SKCanvasView
             overlayCanvas.DrawCircle(imgX, imgY, radiusInImagePx, overlayPaint);
 
         InvalidateSurface();
-        e.Handled = true;
     }
 
+    private static float Distance(SKPoint a, SKPoint b) => MathF.Sqrt(MathF.Pow(a.X - b.X, 2) + MathF.Pow(a.Y - b.Y, 2));
+    private static SKPoint Midpoint(SKPoint a, SKPoint b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
+
+    /// <summary>Fit-to-canvas scale/offset (unchanged from before pinch-zoom existed) with the user's current
+    /// zoom/pan applied on top -- at _zoom=1/_panX=_panY=0 this is exactly the old fit-to-screen behavior.</summary>
     private (float Scale, float OffsetX, float OffsetY) FitTransform()
     {
         if (_image == null || CanvasSize.Width <= 0 || CanvasSize.Height <= 0) return (1, 0, 0);
-        float scale = Math.Min(CanvasSize.Width / _image.Width, CanvasSize.Height / _image.Height);
-        float offX = (CanvasSize.Width - _image.Width * scale) / 2;
-        float offY = (CanvasSize.Height - _image.Height * scale) / 2;
+        float baseScale = Math.Min(CanvasSize.Width / _image.Width, CanvasSize.Height / _image.Height);
+        float scale = baseScale * _zoom;
+        float offX = (CanvasSize.Width - _image.Width * scale) / 2 + _panX;
+        float offY = (CanvasSize.Height - _image.Height * scale) / 2 + _panY;
         return (scale, offX, offY);
     }
 
@@ -140,18 +233,4 @@ public sealed class MaskEditorView : SKCanvasView
         canvas.Restore();
     }
 
-    /// <summary>Called by the page when it is navigated away from (see SegmentPage.xaml.cs's OnDisappearing):
-    /// <see cref="_image"/>/<see cref="_mask"/>/<see cref="_tintedOverlay"/> are native-memory-backed and not
-    /// reliably reclaimed by waiting for the GC to notice the managed wrapper is unreachable -- explicit
-    /// disposal is the only way to free that memory promptly (found in review: with no disposal at all, each
-    /// visit to this screen permanently leaked a full-resolution copy of the photo plus two mask-sized bitmaps).</summary>
-    public void Unload()
-    {
-        _image?.Dispose();
-        _mask?.Dispose();
-        _tintedOverlay?.Dispose();
-        _image = null;
-        _mask = null;
-        _tintedOverlay = null;
-    }
 }

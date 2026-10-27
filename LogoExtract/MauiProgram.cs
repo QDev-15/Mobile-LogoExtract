@@ -1,6 +1,7 @@
 ﻿using LogoExtract.AdsService;
 using LogoExtract.Core;
 using LogoExtract.Core.Segmentation;
+using LogoExtract.Services;
 using LogoExtract.ViewModels;
 using LogoExtract.Views;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ public static class MauiProgram
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+				fonts.AddFont("MaterialIcons-Regular.ttf", "Icons");
 			});
 
 		builder.Services.AddSingleton(_ => new ItemStore(Path.Combine(FileSystem.AppDataDirectory, "items")));
@@ -56,6 +58,11 @@ public static class MauiProgram
 			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] new InferenceSession: {sw.ElapsedMilliseconds}ms");
 			return service;
 		}));
+
+		// One dialog, one overlay, singleton: every page that drops an AppDialogOverlay into its own root Grid
+		// binds to this SAME instance (mobile-app-design.md §5.5), so there is only ever one confirm/alert on
+		// screen regardless of which page triggered it.
+		builder.Services.AddSingleton<AppDialog>();
 
 		builder.Services.AddTransient<ItemsViewModel>();
 		builder.Services.AddTransient<ImportViewModel>();

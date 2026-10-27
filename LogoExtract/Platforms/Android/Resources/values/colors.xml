@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#512BD4</color>
-    <color name="colorPrimaryDark">#2B0B98</color>
-    <color name="colorAccent">#2B0B98</color>
+    <!-- Was still the stock MAUI template purple until this consistency pass (2026-10-27). This file is a
+         separate color system from Colors.xaml: it drives Android chrome (status bar, default widget tint)
+         before MAUI/XAML resources ever apply, and is easy to forget when rebranding (see mobile-app-design.md
+         section 2.3 / section 8 gotcha #6; PdfReader shipped the same miss with its own brand red). Matches
+         Colors.xaml's Primary/Tertiary, not a one-off hex. -->
+    <color name="colorPrimary">#1FAE82</color>
+    <color name="colorPrimaryDark">#1A6B50</color>
+    <color name="colorAccent">#1FAE82</color>
 </resources>

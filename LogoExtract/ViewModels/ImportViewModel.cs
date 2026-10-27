@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LogoExtract.Core;
 using LogoExtract.Core.Imaging;
+using LogoExtract.Services;
 using SkiaSharp;
 
 namespace LogoExtract.ViewModels;
@@ -9,10 +10,12 @@ namespace LogoExtract.ViewModels;
 public partial class ImportViewModel : ObservableObject
 {
     private readonly ItemStore _store;
+    private readonly AppDialog _dialog;
 
-    public ImportViewModel(ItemStore store)
+    public ImportViewModel(ItemStore store, AppDialog dialog)
     {
         _store = store;
+        _dialog = dialog;
     }
 
     [ObservableProperty]
@@ -23,7 +26,7 @@ public partial class ImportViewModel : ObservableObject
     {
         if (!MediaPicker.Default.IsCaptureSupported)
         {
-            await Shell.Current.DisplayAlert("Không dùng được máy ảnh", "Thiết bị này không hỗ trợ chụp ảnh trực tiếp.", "Đóng");
+            await _dialog.AlertAsync("Không dùng được máy ảnh", "Thiết bị này không hỗ trợ chụp ảnh trực tiếp.", "Đóng");
             return;
         }
         FileResult? photo = await MediaPicker.Default.CapturePhotoAsync();

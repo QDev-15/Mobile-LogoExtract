@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using LogoExtract.Core.Imaging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
@@ -82,10 +83,18 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
         Console.WriteLine($"[U2Net] build mask bitmap: {sw.ElapsedMilliseconds}ms");
         sw.Restart();
 
-        SKBitmap fullSize = small.Resize(new SKImageInfo(image.Width, image.Height), SKSamplingOptions.Default)
+        using SKBitmap fullSize = small.Resize(new SKImageInfo(image.Width, image.Height), SKSamplingOptions.Default)
             ?? throw new InvalidOperationException("Resize failed");
         Console.WriteLine($"[U2Net] upscale mask to full size: {sw.ElapsedMilliseconds}ms");
-        return new SegmentationResult(fullSize);
+        sw.Restart();
+
+        // Edge-aware refinement against the ORIGINAL full-resolution photo (owner's report, 2026-10-27: "tách
+        // vùng tóc chưa được rõ nét, không tách được từng sợi tóc") -- the 320px model pass above already lost
+        // any hair-strand-scale detail, so this cannot invent it back, but it does pull the mask's blurry edge
+        // onto the photo's real light/dark boundaries instead of a straight bilinear-upscaled curve.
+        SKBitmap refined = GuidedFilter.Refine(image, fullSize);
+        Console.WriteLine($"[U2Net] guided filter refine: {sw.ElapsedMilliseconds}ms");
+        return new SegmentationResult(refined);
     }
 
     public void Dispose() => _session.Dispose();

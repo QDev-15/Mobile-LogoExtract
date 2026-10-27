@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:services="clr-namespace:LogoExtract.Services"
+             x:Class="LogoExtract.Views.AppDialogOverlay"
+             x:DataType="services:AppDialog"
+             IsVisible="{Binding IsOpen}"
+             InputTransparent="False">
+
+    <!-- Same architecture as DocScanner's AppDialog/AppDialogOverlay (mobile-app-design.md §5.5): a singleton
+         DI service holds the bindable state, this ContentView self-binds to that SAME singleton in its own
+         code-behind (no constructor params) and is stacked — Grid.RowSpan/ColumnSpan — on top of whichever
+         page's root Grid hosts it. Deliberately no tap-on-scrim-to-dismiss (PdfReader's own Dialogs.cs
+         rationale, carried over here verbatim: closing a flow-sensitive dialog by an accidental outside tap
+         loses the person's place without them asking to leave it) — only the Cancel/Accept buttons, or the
+         hardware Back button via AppDialog.Dismiss(), close it. -->
+    <Grid BackgroundColor="#B3000000">
+        <Border HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="320" Padding="22,20"
+                StrokeThickness="0"
+                BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="22" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="Black" Opacity="0.32" Radius="17" Offset="0,7" />
+            </Border.Shadow>
+            <VerticalStackLayout Spacing="14">
+                <Label Text="{Binding Title}" FontFamily="OpenSansSemibold" FontSize="17"
+                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                <Label Text="{Binding Message}" IsVisible="{Binding HasMessage}" FontSize="13.5" LineHeight="1.25"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+
+                <!-- 2-button row: Cancel (outlined) + Accept (filled, red when destructive). -->
+                <Grid IsVisible="{Binding ShowCancel}" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,4,0,0">
+                    <!-- Tertiary in Light theme, not Primary (same reasoning as ImportPage's own outlined button:
+                         Primary-as-foreground on this card's near-white background measures ~2.6:1, under the
+                         3:1 UI-component floor; see Colors.xaml's Tertiary remarks). -->
+                    <Button Text="{Binding CancelText}" Command="{Binding CancelCommand}"
+                            BackgroundColor="Transparent" BorderWidth="1.5"
+                            BorderColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                            TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    <Button Grid.Column="1" Text="{Binding AcceptText}" Command="{Binding AcceptCommand}"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                            TextColor="{StaticResource PrimaryDarkText}">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsDestructive}" Value="True">
+                                <Setter Property="BackgroundColor" Value="#D32F2F" />
+                                <Setter Property="TextColor" Value="White" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </Grid>
+
+                <!-- 1-button row: AlertAsync's plain message dialog, Accept alone, full width. -->
+                <Button Text="{Binding AcceptText}" Command="{Binding AcceptCommand}" Margin="0,4,0,0"
+                        IsVisible="{Binding ShowCancel, Converter={StaticResource InvertedBoolConverter}}"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                        TextColor="{StaticResource PrimaryDarkText}" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

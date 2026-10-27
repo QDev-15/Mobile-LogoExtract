@@ -24,7 +24,13 @@
 
 		<!-- Ads mode / master switch: same two properties and meaning as DocScanner/PdfReader (see those repos'
 		     csproj comments for the full reasoning). Dev (default) uses sandbox/no ad units; only Pro (passed
-		     explicitly for the one build that goes to Play) uses real ones from RealAdsConfig.cs. -->
+		     explicitly for the one build that goes to Play) uses real ones from RealAdsConfig.cs. 
+
+			 dotnet publish LogoExtract/LogoExtract.csproj -f net10.0-android -c Release
+			 dotnet publish LogoExtract/LogoExtract.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab -p:AdsMode=Pro -p:AdsEnabled=true
+			 dotnet publish LogoExtract/LogoExtract.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab -p:AdsMode=Dev -p:AdsEnabled=true
+			 dotnet publish LogoExtract/LogoExtract.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab -p:AdsMode=Dev -p:AdsEnabled=false 
+			 -->
 		<AdsMode Condition="'$(AdsMode)' == ''">Dev</AdsMode>
 		<DefineConstants Condition="'$(AdsMode)' == 'Pro'">$(DefineConstants);ADS_MODE_PRO</DefineConstants>
 		<AdsEnabled Condition="'$(AdsEnabled)' == ''">true</AdsEnabled>
@@ -42,6 +48,42 @@
 		<AndroidLinkMode>Full</AndroidLinkMode>
 	</PropertyGroup>
 
+	<!-- Upload-signing config (keystore path/passwords, AndroidPackageFormat=aab): lives in release\Signing.props,
+	     gitignored (see release\KEYSTORE-README.md), same shape as DocScanner/PdfReader's own setup. Conditioned on
+	     Exists(...) so a Debug build, or a fresh checkout without this local-only folder, never fails. -->
+	<Import Project="release\Signing.props" Condition="'$(Configuration)' == 'Release' AND Exists('release\Signing.props')" />
+
+<Target Name="CopyReleaseAabWithVersion" AfterTargets="Publish"
+	        Condition="'$(Configuration)' == 'Release' AND '$(AndroidPackageFormat)' == 'aab'">
+		<ItemGroup>
+			<_SignedAab Include="$(PublishDir)*-Signed.aab" />
+		</ItemGroup>
+		<!-- One folder per build, release\LogoExtract-<version>-<code>\, holding the bundle and the R8 mapping.txt of that
+		     exact build (every build makes a different mapping; keep the pair together). The mapping is also inside the
+		     .aab itself (BUNDLE-METADATA), so Play needs no separate upload; this copy is for manual upload / archive. -->
+		<PropertyGroup>
+			<_ReleaseName>LogoExtract-$(ApplicationDisplayVersion)-$(ApplicationVersion)</_ReleaseName>
+			<_ReleaseDir>release\$(_ReleaseName)\</_ReleaseDir>
+			<_ReleaseMapping>$(OutputPath)mapping.txt</_ReleaseMapping>
+		</PropertyGroup>
+		<!-- Warn when the build was NOT obfuscated (this project does not set AndroidR8ObfuscationMode at all
+		     yet, unlike PdfReader/DocScanner, so this always fires today — a reminder, not a blocker): such an
+		     AAB keeps Play's "DEX code optimization" obfuscation score below 25%. There is no build-release.ps1
+		     in this repo (that script, which points dotnet at a newer Android SDK supporting
+		     AndroidR8ObfuscationMode, only exists in the sibling PdfReader/DocScanner repos) — adopting real
+		     obfuscation here means doing the same setup there first. -->
+		<ReadLinesFromFile File="$(IntermediateOutputPath)proguard\proguard_xamarin.cfg" Condition="Exists('$(IntermediateOutputPath)proguard\proguard_xamarin.cfg')">
+			<Output TaskParameter="Lines" ItemName="_ProguardXamarinLine" />
+		</ReadLinesFromFile>
+		<ItemGroup>
+			<_NoObfuscationLine Include="@(_ProguardXamarinLine)" Condition="'%(Identity)' == '-dontobfuscate'" />
+		</ItemGroup>
+		<Warning Condition="'@(_NoObfuscationLine)' != ''" Text="This build is NOT obfuscated (AndroidR8ObfuscationMode not set in this project; see the comment above)." />
+		<MakeDir Directories="$(_ReleaseDir)" Condition="'@(_SignedAab)' != ''" />
+		<Copy SourceFiles="@(_SignedAab)" DestinationFiles="$(_ReleaseDir)$(_ReleaseName).aab" Condition="'@(_SignedAab)' != ''" />
+		<Copy SourceFiles="$(_ReleaseMapping)" DestinationFiles="$(_ReleaseDir)mapping.txt" Condition="'@(_SignedAab)' != '' AND Exists('$(_ReleaseMapping)')" />
+		<Message Importance="high" Condition="'@(_SignedAab)' != ''" Text="Release build copied to $(_ReleaseDir) (aab + mapping.txt)" />
+	</Target>
 	<ItemGroup>
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0A0B0D" />
 		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0A0B0D" BaseSize="160,160" />

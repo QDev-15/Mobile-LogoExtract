@@ -14,12 +14,6 @@ public partial class SegmentPage : ContentPage
         _vm.ImagesReady += (image, mask) => MainThread.BeginInvokeOnMainThread(() => Editor.Load(image, mask));
     }
 
-    protected override void OnDisappearing()
-    {
-        base.OnDisappearing();
-        Editor.Unload();
-    }
-
     private void OnAddMode(object? sender, EventArgs e) => Editor.SetMode(MaskEditorView.BrushMode.Add);
     private void OnRemoveMode(object? sender, EventArgs e) => Editor.SetMode(MaskEditorView.BrushMode.Remove);
 
@@ -28,5 +22,14 @@ public partial class SegmentPage : ContentPage
         SKBitmap? mask = Editor.CurrentMask;
         if (mask == null) return;
         await _vm.SaveAsync(mask);
+    }
+
+    private void OnCancelRegion(object? sender, EventArgs e) => _vm.CancelRegionSelect();
+
+    private async void OnConfirmRegion(object? sender, EventArgs e)
+    {
+        SKBitmap? selection = Editor.CurrentMask;
+        if (selection == null) return;
+        await _vm.ConfirmRegionSelectAsync(selection);
     }
 }

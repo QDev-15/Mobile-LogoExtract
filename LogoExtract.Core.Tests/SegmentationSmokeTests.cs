@@ -19,8 +19,9 @@ public class SegmentationSmokeTests
     public void SegmentSample_WritesCompositedCutout(string fileName)
     {
         string modelPath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract", "Resources", "Raw", "Models", "u2netp.onnx");
-        string samplePath = Path.Combine(RepoRoot, "LogoExtract-prototype", "samples", fileName);
-        string outDir = Path.Combine(RepoRoot, "LogoExtract-prototype", "outputs");
+        // LogoExtract-prototype/ moved from a sibling of Mobile-LogoExtract/ to inside it (2026-10-27, added to git).
+        string samplePath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract-prototype", "samples", fileName);
+        string outDir = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract-prototype", "outputs");
         Assert.True(File.Exists(modelPath), $"Model not found: {modelPath}");
         Assert.True(File.Exists(samplePath), $"Sample not found: {samplePath}");
 

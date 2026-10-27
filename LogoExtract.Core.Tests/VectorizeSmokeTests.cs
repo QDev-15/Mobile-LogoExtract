@@ -12,8 +12,9 @@ public class VectorizeSmokeTests
     public void Trace_Sample3_WritesSvgNextToPythonOutputs()
     {
         string modelPath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract", "Resources", "Raw", "Models", "u2netp.onnx");
-        string samplePath = Path.Combine(RepoRoot, "LogoExtract-prototype", "samples", "3.png");
-        string outPath = Path.Combine(RepoRoot, "LogoExtract-prototype", "outputs", "3_vectorize_test.svg");
+        // LogoExtract-prototype/ moved from a sibling of Mobile-LogoExtract/ to inside it (2026-10-27, added to git).
+        string samplePath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract-prototype", "samples", "3.png");
+        string outPath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract-prototype", "outputs", "3_vectorize_test.svg");
 
         using SKBitmap image = SKBitmap.Decode(samplePath)!;
         using var service = new U2NetSegmentationService(modelPath);

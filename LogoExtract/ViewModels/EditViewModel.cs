@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.Input;
 using LogoExtract.Core;
 using LogoExtract.Core.Imaging;
 using LogoExtract.Core.Vectorize;
+using LogoExtract.Services;
+using Microsoft.Maui.ApplicationModel;
 using SkiaSharp;
 
 namespace LogoExtract.ViewModels;
@@ -11,21 +13,21 @@ namespace LogoExtract.ViewModels;
 public partial class EditViewModel : ObservableObject
 {
     private readonly ItemStore _store;
+    private readonly AppDialog _dialog;
     private LogoItem? _item;
-    private SKBitmap? _cutout;
-    private SKBitmap? _lastAdjusted; // the bitmap PreviewImageSource currently shows; kept so ExportAsync re-encodes the exact same pixels instead of recomputing
-    private CancellationTokenSource? _previewDebounce;
+    private SKBitmap? _cutout; // full-resolution, loaded once from disk -- only ever re-filtered on demand (Export/SaveToGallery), never while dragging a slider
 
-    public EditViewModel(ItemStore store)
+    public EditViewModel(ItemStore store, AppDialog dialog)
     {
         _store = store;
+        _dialog = dialog;
     }
 
     [ObservableProperty]
     private string itemId = "";
 
     [ObservableProperty]
-    private ImageSource? previewImageSource;
+    private SKBitmap? previewBitmap;
 
     [ObservableProperty]
     private double brightness; // -1..1
@@ -43,62 +45,52 @@ public partial class EditViewModel : ObservableObject
     private string? vectorPreviewPath;
 
     partial void OnItemIdChanged(string value) => Load();
-    partial void OnBrightnessChanged(double value) => SchedulePreview();
-    partial void OnContrastChanged(double value) => SchedulePreview();
 
+    /// <summary>PreviewBitmap is decoded ONCE here, downscaled for on-screen use (see DownscaleForPreview's own
+    /// remarks on why not full-resolution). Brightness/Contrast trigger no re-filter or re-encode at all:
+    /// EditPage's AdjustablePreviewView is bound directly to both properties and applies them as a zero-CPU
+    /// color matrix at draw time instead (see AdjustablePreviewView's own remarks). The full-resolution adjusted
+    /// result for Export/SaveToGallery is still computed separately, on demand, by
+    /// <see cref="ComputeFullResAdjustedAsync"/>.</summary>
     private void Load()
     {
         _cutout?.Dispose();
         _cutout = null;
+        PreviewBitmap?.Dispose();
+        PreviewBitmap = null;
         _item = _store.Get(ItemId);
         if (_item?.CutoutFile == null) return;
         string path = Path.Combine(_store.ItemFolder(_item.Id), _item.CutoutFile);
         _cutout = BitmapIO.DecodeAsRgba8888(path);
         if (_cutout == null) return; // corrupted/missing cutout file; leave the preview blank rather than crash on a null bitmap below
+        // Downscaled, not the full-resolution _cutout directly: a multi-MP bitmap (routinely 3000px+ on a side)
+        // is unnecessary detail for a screen-sized preview and was part of what made zoom feel heavy before this
+        // view moved to SkiaSharp-canvas-based zoom. ComputeFullResAdjustedAsync still reads full-resolution
+        // _cutout separately for Export/SaveToGallery, so quality there is unaffected.
+        PreviewBitmap = DownscaleForPreview(_cutout, 1400);
         Brightness = _item.ColorAdjust.Brightness;
         Contrast = _item.ColorAdjust.Contrast;
-        SchedulePreview();
     }
 
-    /// <summary>Debounces slider drags: review 2026-10-27 found the first version re-ran the full color-adjust
-    /// pixel pass AND wrote a PNG to disk on every single ValueChanged tick while dragging (dozens per second),
-    /// which on a real multi-MP photo would make the slider stutter badly and needlessly wear out flash storage.
-    /// Now waits for a short pause in input, runs the pixel work off the UI thread, and updates the preview via
-    /// an in-memory ImageSource (no disk write at all for the live preview -- only SaveColorAsync/ExportAsync
-    /// touch disk).</summary>
-    private void SchedulePreview()
+    private static SKBitmap DownscaleForPreview(SKBitmap source, int maxDimension)
     {
-        _previewDebounce?.Cancel();
-        _previewDebounce = new CancellationTokenSource();
-        CancellationToken token = _previewDebounce.Token;
-        _ = DebouncedApplyPreviewAsync(token);
+        int longSide = Math.Max(source.Width, source.Height);
+        if (longSide <= maxDimension) return source.Copy();
+        float scale = maxDimension / (float)longSide;
+        int width = Math.Max(1, (int)(source.Width * scale));
+        int height = Math.Max(1, (int)(source.Height * scale));
+        return source.Resize(new SKImageInfo(width, height), SKSamplingOptions.Default)
+            ?? throw new InvalidOperationException("Resize failed");
     }
 
-    private async Task DebouncedApplyPreviewAsync(CancellationToken token)
+    /// <summary>Computes the FULL-resolution color-adjusted cutout fresh, from <see cref="_cutout"/> -- called
+    /// once by ExportAsync/SaveToGalleryAsync right when the user actually asks to export.</summary>
+    private async Task<SKBitmap?> ComputeFullResAdjustedAsync()
     {
-        try
-        {
-            await Task.Delay(150, token);
-        }
-        catch (TaskCanceledException)
-        {
-            return; // superseded by a newer slider change
-        }
-        if (token.IsCancellationRequested || _cutout == null) return;
-
-        SKBitmap cutout = _cutout; // local copy: safe to read off-thread, Load() only ever replaces the field on the UI thread between gestures
+        if (_cutout == null) return null;
+        SKBitmap cutout = _cutout;
         var adjust = new ColorAdjust { Brightness = Brightness, Contrast = Contrast };
-        (SKBitmap adjusted, byte[] encoded) = await Task.Run(() =>
-        {
-            SKBitmap result = ColorAdjustFilter.Apply(cutout, adjust);
-            using SKData data = result.Encode(SKEncodedImageFormat.Png, 100);
-            return (result, data.ToArray());
-        }, token);
-        if (token.IsCancellationRequested) { adjusted.Dispose(); return; }
-
-        _lastAdjusted?.Dispose();
-        _lastAdjusted = adjusted;
-        PreviewImageSource = ImageSource.FromStream(() => new MemoryStream(encoded));
+        return await Task.Run(() => ColorAdjustFilter.Apply(cutout, adjust));
     }
 
     [RelayCommand]
@@ -107,7 +99,7 @@ public partial class EditViewModel : ObservableObject
         if (_item == null) return;
         var adjust = new ColorAdjust { Brightness = Brightness, Contrast = Contrast };
         _store.Update(_item.Id, i => i with { ColorAdjust = adjust });
-        await Shell.Current.DisplayAlert("Đã lưu", "Đã lưu chỉnh màu.", "Đóng");
+        await _dialog.AlertAsync("Đã lưu", "Đã lưu chỉnh màu.", "Đóng");
     }
 
     [RelayCommand]
@@ -131,13 +123,51 @@ public partial class EditViewModel : ObservableObject
         IsBusy = false;
         if (!ok)
         {
-            await Shell.Current.DisplayAlert("Không vector hoá được", "Không tìm thấy dữ liệu tách nền. Hãy quay lại bước Tách nền trước.", "Đóng");
+            await _dialog.AlertAsync("Không vector hoá được", "Không tìm thấy dữ liệu tách nền. Hãy quay lại bước Tách nền trước.", "Đóng");
             return;
         }
         _store.Update(_item.Id, i => i with { State = ItemState.Vectorized, VectorFile = "vector.svg" });
         VectorPreviewPath = svgPath;
-        await Shell.Current.DisplayAlert("Đã vector hoá",
+        await _dialog.AlertAsync("Đã vector hoá",
             "Đã tạo file đường viền (cut path) SVG. Đây là bản v1: đường viền ngoài 1 màu, chưa phải vector tách theo từng vùng màu.",
+            "Đóng");
+    }
+
+    /// <summary>Saves the currently-previewed (color-adjusted) cutout straight into the device's public
+    /// Pictures/LogoExtract folder via <see cref="GallerySaver"/> -- a direct save that needs no other app,
+    /// as a reliable alternative to <see cref="ExportAsync"/>'s share sheet (owner's report, 2026-10-27:
+    /// "xuất/chia sẻ ... không lưu được vào bộ nhớ máy" -- some share targets only preview the file or need
+    /// sign-in/network, none guaranteed a local copy).</summary>
+    [RelayCommand]
+    private async Task SaveToGalleryAsync()
+    {
+        // WRITE_EXTERNAL_STORAGE is only declared (and only needed) up to API 28 (see AndroidManifest.xml);
+        // from API 29 scoped storage lets any app write its own files into MediaStore without it.
+        if (!OperatingSystem.IsAndroidVersionAtLeast(29))
+        {
+            PermissionStatus status = await Permissions.RequestAsync<Permissions.StorageWrite>();
+            if (status != PermissionStatus.Granted)
+            {
+                await _dialog.AlertAsync("Thiếu quyền", "Cần quyền lưu trữ để lưu ảnh vào thư viện.", "Đóng");
+                return;
+            }
+        }
+
+        IsBusy = true;
+        BusyText = "Đang lưu vào thư viện ảnh...";
+        using SKBitmap? adjusted = await ComputeFullResAdjustedAsync();
+        if (adjusted == null) { IsBusy = false; return; }
+        string fileName = $"logoextract_{_item?.Name ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+        string? saved = await Task.Run(() =>
+        {
+            using SKData data = adjusted.Encode(SKEncodedImageFormat.Png, 100);
+            return GallerySaver.SaveImagePng(data.ToArray(), fileName);
+        });
+        IsBusy = false;
+
+        await _dialog.AlertAsync(
+            saved != null ? "Đã lưu" : "Lỗi",
+            saved != null ? "Đã lưu ảnh vào thư viện ảnh (Pictures/LogoExtract)." : "Không lưu được ảnh vào thư viện ảnh.",
             "Đóng");
     }
 
@@ -148,15 +178,16 @@ public partial class EditViewModel : ObservableObject
         string folder = _store.ItemFolder(_item.Id);
         List<ShareFile> files = [];
 
-        // Re-encode whatever PreviewImageSource is currently showing (the live-adjusted pixels, not necessarily
-        // saved yet -- "what you see is what you get") to a temp file, since Share needs a real file path, not
-        // the in-memory bytes already held for the preview.
-        if (_lastAdjusted != null)
+        // Full-resolution, computed fresh here (not read from a cached live-preview bitmap) so Share always
+        // gets the current Brightness/Contrast at full quality, matching "what you see is what you get" even
+        // though the on-screen preview itself only shows the adjustment via a GPU color matrix.
+        using SKBitmap? adjusted = await ComputeFullResAdjustedAsync();
+        if (adjusted != null)
         {
             string exportPath = Path.Combine(folder, "export_preview.png");
             await Task.Run(() =>
             {
-                using SKData data = _lastAdjusted.Encode(SKEncodedImageFormat.Png, 100);
+                using SKData data = adjusted.Encode(SKEncodedImageFormat.Png, 100);
                 using FileStream stream = File.Create(exportPath);
                 data.SaveTo(stream);
             });
@@ -167,14 +198,20 @@ public partial class EditViewModel : ObservableObject
         await Share.Default.RequestAsync(new ShareMultipleFilesRequest { Title = "Xuất logo", Files = files });
     }
 
+    /// <summary>Pops the whole navigation stack back to the dashboard in one step (Home -> Segment -> Edit
+    /// otherwise takes 2 taps of the AppBar back arrow to leave) -- owner's request, 2026-10-27: a clear "done
+    /// with this item" action belongs on this page once color/vector/export are finished, not just an implicit
+    /// back button.</summary>
+    [RelayCommand]
+    private async Task FinishAsync() => await Shell.Current.GoToAsync("//HomePage");
+
     /// <summary>Called from EditPage's OnDisappearing -- see MaskEditorView.Unload's remarks on why native
     /// SKBitmap memory needs an explicit dispose rather than waiting on the GC.</summary>
     public void Unload()
     {
-        _previewDebounce?.Cancel();
         _cutout?.Dispose();
         _cutout = null;
-        _lastAdjusted?.Dispose();
-        _lastAdjusted = null;
+        PreviewBitmap?.Dispose();
+        PreviewBitmap = null;
     }
 }

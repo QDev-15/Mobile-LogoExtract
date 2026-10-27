@@ -2,70 +2,145 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             xmlns:views="clr-namespace:LogoExtract.Views"
              xmlns:ads="clr-namespace:LogoExtract.AdsService;assembly=LogoExtract.AdsService.Core"
              x:Class="LogoExtract.Views.HomePage"
              x:DataType="vm:ItemsViewModel"
-             Title="Logo Extract">
+             Title="Logo Extract"
+             BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
 
+    <!-- Design pass, 2026-10-27, referencing DocScanner/PdfReader's own look (owner's report: "giao diện vẫn xấu
+         quá"): plain rows on a flat white page became rounded, shadowed cards on a pale page background; the
+         bottom action became a bold pill matching those apps' primary CTA treatment; every toolbar button below
+         this page now pairs an icon with its name (ToolButton), not an icon alone. -->
     <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- Header -->
-        <Grid Grid.Row="0" Padding="20,16" ColumnDefinitions="*,Auto"
-              BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}">
-            <Label Text="Logo Extract" FontSize="24" FontAttributes="Bold"
+        <Grid Grid.Row="0" Padding="20,18,20,14" ColumnDefinitions="*,Auto"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <Label Text="Logo Extract" FontSize="22" FontAttributes="Bold" VerticalOptions="Center"
                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+            <!-- 44x44, not the previous 40x40 (accessibility baseline, consistency pass 2026-10-27): this Border
+                 IS the tap target (TapGestureRecognizer on it directly), a stock control's own 44dp-floor style
+                 doesn't apply to a bare Border. Icon uses Tertiary in Light theme, not Primary — Primary-as-
+                 foreground on this pale Secondary tile measures ~2.5:1 (see Colors.xaml's Tertiary remarks). -->
+            <Border Grid.Column="1" WidthRequest="44" HeightRequest="44" StrokeThickness="0"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="22" />
+                </Border.StrokeShape>
+                <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
+                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding ImportCommand}" />
+                </Border.GestureRecognizers>
+            </Border>
         </Grid>
+        <BoxView Grid.Row="0" HeightRequest="0.6" VerticalOptions="End"
+                 Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
 
         <!-- Empty state -->
         <VerticalStackLayout Grid.Row="1" IsVisible="{Binding IsEmpty}"
                               VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Padding="40">
-            <Label Text="Chưa có logo nào" FontSize="20" FontAttributes="Bold" HorizontalTextAlignment="Center"
+            <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="56"
+                   HorizontalOptions="Center"
+                   TextColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}" />
+            <Label Text="Chưa có logo nào" FontSize="19" FontAttributes="Bold" HorizontalTextAlignment="Center"
                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-            <Label Text="Bấm nút + bên dưới để chụp hoặc chọn ảnh áo có logo." HorizontalTextAlignment="Center"
+            <Label Text="Bấm nút Nhập ảnh bên dưới để chụp hoặc chọn ảnh áo có logo." HorizontalTextAlignment="Center" FontSize="13"
                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
         </VerticalStackLayout>
 
         <!-- Items list -->
         <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" IsVisible="{Binding IsEmpty, Converter={StaticResource InvertedBoolConverter}}"
-                        Margin="12">
+                        Margin="16,14">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ItemRow">
-                    <Grid Padding="8" ColumnDefinitions="64,*,Auto" RowDefinitions="Auto">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.OpenCommand}"
-                                                   CommandParameter="{Binding .}" />
-                        </Grid.GestureRecognizers>
-                        <Border Grid.Column="0" StrokeShape="RoundRectangle 10" HeightRequest="56" WidthRequest="56"
-                                Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}">
-                            <Image Source="{Binding ThumbPath}" Aspect="AspectFill" />
+                    <!-- Swipe-right-to-delete (SwipeView, red "Xoá"), the uniform delete gesture across this
+                         portfolio (mobile-app-design.md §5.3) — replaces the previous tap-on-X icon, which was
+                         both an instant delete with no confirmation AND a one-off affordance not used anywhere
+                         else in the portfolio (consistency pass, 2026-10-27). DeleteCommand itself now confirms
+                         via AppDialog before actually deleting (see ItemsViewModel.DeleteAsync). -->
+                    <SwipeView>
+                        <SwipeView.RightItems>
+                            <SwipeItems>
+                                <SwipeItem Text="Xoá" BackgroundColor="#D32F2F"
+                                           Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteCommand}"
+                                           CommandParameter="{Binding .}" />
+                            </SwipeItems>
+                        </SwipeView.RightItems>
+                        <Border StrokeThickness="0" Margin="0,0,0,10" Padding="10"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="16" />
+                            </Border.StrokeShape>
+                            <Border.Shadow>
+                                <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                            </Border.Shadow>
+                            <Grid ColumnDefinitions="56,*">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.OpenCommand}"
+                                                           CommandParameter="{Binding .}" />
+                                </Grid.GestureRecognizers>
+                                <Border Grid.Column="0" StrokeThickness="0" HeightRequest="56" WidthRequest="56"
+                                        BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12" />
+                                    </Border.StrokeShape>
+                                    <Image Source="{Binding ThumbPath}" Aspect="AspectFill" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" Padding="12,0" VerticalOptions="Center" Spacing="5">
+                                    <Label Text="{Binding Name}" FontSize="14" FontAttributes="Bold" LineBreakMode="TailTruncation"
+                                           TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                                    <!-- Text color is per-state (StateTextColor), not always White — the "Hoàn tất"
+                                         badge's success-green fill needs dark text to clear WCAG AA (see
+                                         ItemRow.StateTextColor's own remarks). -->
+                                    <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
+                                            BackgroundColor="{Binding StateColor}" Stroke="Transparent">
+                                        <Label Text="{Binding StateText}" TextColor="{Binding StateTextColor}" FontSize="11" FontAttributes="Bold" />
+                                    </Border>
+                                </VerticalStackLayout>
+                            </Grid>
                         </Border>
-                        <VerticalStackLayout Grid.Column="1" Padding="12,0" VerticalOptions="Center" Spacing="4">
-                            <Label Text="{Binding Name}" FontAttributes="Bold"
-                                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-                            <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
-                                    BackgroundColor="{Binding StateColor}" Stroke="Transparent">
-                                <Label Text="{Binding StateText}" TextColor="White" FontSize="12" />
-                            </Border>
-                        </VerticalStackLayout>
-                        <Label Grid.Column="2" Text="&#x2715;" FontSize="18" VerticalOptions="Center" Padding="10"
-                               TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteCommand}"
-                                                       CommandParameter="{Binding .}" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                    </Grid>
+                    </SwipeView>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <!-- Bottom bar: ad banner placeholder + FAB -->
-        <Grid Grid.Row="2" RowDefinitions="Auto,Auto">
+        <!-- Bottom bar: ad banner placeholder + primary CTA pill -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.Row="0" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
             <ads:AdBannerSurface Grid.Row="0" />
-            <Button Grid.Row="1" Text="+  Nhập ảnh" Command="{Binding ImportCommand}"
-                    Margin="20,12,20,20" HeightRequest="52" CornerRadius="26"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
-                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
+            <Border Grid.Row="1" Margin="20,12,20,20" HeightRequest="52" StrokeThickness="0"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="26" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" Opacity="0.35" Radius="14" Offset="0,6" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding ImportCommand}" />
+                </Border.GestureRecognizers>
+                <!-- PrimaryDarkText in BOTH themes, not White-in-Light (consistency pass, 2026-10-27): White on
+                     Primary (light mint) measures ~2.8:1, well under WCAG AA — this hue's luminance is high
+                     regardless of theme, so the same near-black text that Dark theme already used is correct
+                     for Light too (see Colors.xaml's Tertiary remarks for the full reasoning). -->
+                <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
+                    <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
+                           VerticalOptions="Center" TextColor="{StaticResource PrimaryDarkText}" />
+                    <Label Text="Nhập ảnh" FontAttributes="Bold" VerticalOptions="Center"
+                           TextColor="{StaticResource PrimaryDarkText}" />
+                </HorizontalStackLayout>
+            </Border>
         </Grid>
+
+        <!-- Confirm-delete dialog overlay (added 2026-10-27) — stacked on top of every row above via RowSpan,
+             per mobile-app-design.md §5.5. HomePage's own OnBackButtonPressed dismisses this first before its
+             double-back-to-exit logic runs. -->
+        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="3" />
     </Grid>
 </ContentPage>

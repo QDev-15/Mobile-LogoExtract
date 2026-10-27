@@ -11,6 +11,12 @@
     <Color x:Key="PrimaryDarkText">#0A0B0D</Color>
     <Color x:Key="Secondary">#DFF6EE</Color>
     <Color x:Key="SecondaryDarkText">#27E3A3</Color>
+    <!-- Darker-than-Primary brand shade. Also doubles, as of the 2026-10-27 consistency pass, as the
+         Light-theme foreground color wherever brand mint sits as TEXT/an ICON on a light/white surface (outlined
+         button border+label, icon-tile glyph): Primary (#1FAE82) as foreground-on-white measures ~2.8:1, below
+         even the 3:1 UI-component floor, because this hue's luminance is high regardless of how saturated it
+         looks. Tertiary clears >5:1 in the same spots. Dark theme is unaffected — PrimaryDark-as-foreground on
+         this app's near-black dark surfaces already clears >9:1. -->
     <Color x:Key="Tertiary">#1A6B50</Color>
 
     <Color x:Key="White">White</Color>
@@ -48,6 +54,10 @@
     <Color x:Key="BackgroundDark">#0A0B0D</Color>
     <Color x:Key="SurfaceLight">#FFFFFF</Color>
     <Color x:Key="SurfaceDark">#15171A</Color>
+    <!-- Card tone, one notch lighter than SurfaceDark so cards read as a distinct layer over the page background
+         in dark mode too (design pass, 2026-10-27, matching DocScanner's CardBackground/CardBackgroundDark). -->
+    <Color x:Key="CardBackgroundLight">#FFFFFF</Color>
+    <Color x:Key="CardBackgroundDark">#1C2023</Color>
     <Color x:Key="TextPrimaryLight">#15181A</Color>
     <Color x:Key="TextPrimaryDark">#F2F4F3</Color>
     <Color x:Key="TextSecondaryLight">#5B6560</Color>
@@ -55,10 +65,19 @@
     <Color x:Key="BorderLight">#E3E8E6</Color>
     <Color x:Key="BorderDark">#262A2D</Color>
 
-    <Color x:Key="StateSegmenting">#2E7FD6</Color>
-    <Color x:Key="StateFlattenWait">#D98A1F</Color>
-    <Color x:Key="StateVectorized">#8A5CF0</Color>
-    <Color x:Key="StateDone">#1FAE82</Color>
-    <Color x:Key="StateError">#E0493B</Color>
+    <!-- HomePage's item pipeline-state badges: one literal per real ItemState value (§2.4 — a real-data
+         distinction, not themed), consistency pass 2026-10-27. Replaces the previous StateSegmenting/
+         StateFlattenWait/StateVectorized/StateDone names, which were named for the WRONG step each one actually
+         rendered (e.g. "StateVectorized" painted the Flattened row, not the Vectorized one) and were never
+         actually read by ItemRow.StateColor — it duplicated the same hex as raw C# literals instead, so this
+         dictionary was dead. Also fixes a real contrast failure: the old "done" badge reused brand Primary
+         (#1FAE82) under White text, which measures ~2.8:1 (WCAG AA needs 4.5:1 for an 11px label) — mint is
+         simply too light-for-its-darkness to carry white text. StateVectorized below is the portfolio-wide
+         success literal (§2.4) instead, paired with PrimaryDarkText, not White — see ItemRow.StateTextColor. -->
+    <Color x:Key="StateImported">#1565C0</Color>     <!-- "Đang tách nền" -->
+    <Color x:Key="StateSegmented">#9C6316</Color>    <!-- "Chờ làm phẳng" -->
+    <Color x:Key="StateFlattened">#754ECC</Color>    <!-- "Đã làm phẳng" -->
+    <Color x:Key="StateVectorized">#2E9D5B</Color>   <!-- "Hoàn tất" — portfolio success literal, not brand mint -->
+    <Color x:Key="StateError">#D32F2F</Color>        <!-- reserved (no ItemState.Error exists yet) — aligned to the portfolio-wide destructive literal -->
 
 </ResourceDictionary>

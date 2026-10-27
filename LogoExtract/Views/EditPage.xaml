@@ -2,52 +2,102 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             xmlns:views="clr-namespace:LogoExtract.Views"
              x:Class="LogoExtract.Views.EditPage"
              x:DataType="vm:EditViewModel"
              Title="Chỉnh sửa">
-    <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="18">
 
-            <Border StrokeShape="RoundRectangle 12" HeightRequest="280"
+    <!-- No ScrollView: owner's report, 2026-10-27, "thao tác zoom nó bị lẫn với thao tác scroll". A
+         ScrollView wrapping the whole page competed with PinchGestureRecognizer/PanGestureRecognizer on the
+         preview image for the same touch events. Everything now fits one fixed-height screen instead (header
+         row of controls, the image taking all remaining space, a 4-icon bottom bar), so there is nothing left
+         that needs to scroll. -->
+    <Grid RowDefinitions="Auto,*,Auto" Padding="16,10,16,0" RowSpacing="8">
+
+        <!-- Chỉnh màu: compact header (name + a checkmark icon button where "Lưu chỉnh màu" used to be a full-
+             width button) plus the two sliders, right under it. -->
+        <VerticalStackLayout Grid.Row="0" Spacing="2">
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Text="Chỉnh màu" FontAttributes="Bold" FontSize="16" VerticalOptions="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                <!-- 44x44, not the previous 36x36 (accessibility baseline, consistency pass 2026-10-27).
+                     TextColor is a plain PrimaryDarkText, not the previous hardcoded "White" (which was not
+                     even AppThemeBinding'd — in Dark theme it sat White-on-PrimaryDark at ~1.7:1, nearly
+                     invisible; in Light theme White-on-Primary measures ~2.8:1, also failing WCAG AA). -->
+                <Button Grid.Column="1" Text="{x:Static views:Icons.Check}" FontFamily="{x:Static views:Icons.FontFamily}"
+                        Command="{Binding SaveColorCommand}"
+                        WidthRequest="44" HeightRequest="44" Padding="0" CornerRadius="22" FontSize="18"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                        TextColor="{StaticResource PrimaryDarkText}" />
+            </Grid>
+            <Grid ColumnDefinitions="72,*" ColumnSpacing="8">
+                <Label Text="Độ sáng" FontSize="12" VerticalOptions="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                <Slider Grid.Column="1" Minimum="-1" Maximum="1" Value="{Binding Brightness}" />
+            </Grid>
+            <Grid ColumnDefinitions="72,*" ColumnSpacing="8">
+                <Label Text="Tương phản" FontSize="12" VerticalOptions="Center"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                <Slider Grid.Column="1" Minimum="-1" Maximum="1" Value="{Binding Contrast}" />
+            </Grid>
+        </VerticalStackLayout>
+
+        <!-- Ảnh: fills every pixel left over between the color controls and the bottom bar. Zoom/pan/double-tap
+             are handled inside AdjustablePreviewView's own raw SkiaSharp touch handling, the same technique
+             MaskEditorView already uses (SegmentPage), instead of MAUI's PinchGestureRecognizer / View.Scale and
+             TranslationX/Y, which stayed janky (owner's report, 2026-10-27, "zoom vẫn bị giật lag ... so sánh
+             với các view image ở màn khác ... zoom rất mượt") even after isolating the transform onto its own
+             wrapper Grid. See AdjustablePreviewView's own remarks for the full reasoning. -->
+        <Grid Grid.Row="1" Margin="0,4">
+            <!-- Background behind the cutout is drawn BY the view itself (checkerboard by default), not a flat
+                 BackgroundColor (added 2026-10-27, owner's report: a fixed translucent gray hid both near-
+                 white and near-black edge fringing equally well). See AdjustablePreviewView/PreviewBackgroundKind. -->
+            <Border StrokeShape="RoundRectangle 12"
                     Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}">
-                <Image Source="{Binding PreviewImageSource}" Aspect="AspectFit" BackgroundColor="#33808080" />
+                <views:AdjustablePreviewView x:Name="PreviewCanvas"
+                                             SourceBitmap="{Binding PreviewBitmap}"
+                                             Brightness="{Binding Brightness}" Contrast="{Binding Contrast}" />
             </Border>
 
-            <Label Text="Chỉnh màu" FontAttributes="Bold" FontSize="18"
-                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+            <!-- Cycles the preview's backing (Ô vuông/checkerboard -> Trắng -> Đen -> Xám). Dark translucent chip
+                 (same #CC000000 this app's own SegmentPage region-select hint already uses) so it stays legible
+                 regardless of which backing or image content is currently underneath it. 44x44 floor for the
+                 touch target even though the chip's own content is smaller (accessibility baseline). -->
+            <Border HorizontalOptions="End" VerticalOptions="Start" Margin="0,10,10,0"
+                    MinimumHeightRequest="44" MinimumWidthRequest="44" Padding="12,0"
+                    BackgroundColor="#CC000000" Stroke="Transparent">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnCyclePreviewBackground" />
+                </Border.GestureRecognizers>
+                <Label x:Name="PreviewBgLabel" Text="Ô vuông" TextColor="White" FontSize="12" FontAttributes="Bold"
+                       VerticalOptions="Center" HorizontalOptions="Center" />
+            </Border>
 
-            <VerticalStackLayout Spacing="4">
-                <Label Text="Độ sáng" TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
-                <Slider Minimum="-1" Maximum="1" Value="{Binding Brightness}" />
+            <VerticalStackLayout IsVisible="{Binding IsBusy}" VerticalOptions="Center" Spacing="10"
+                                 BackgroundColor="#80000000" Padding="20">
+                <ActivityIndicator IsRunning="{Binding IsBusy}" Color="White" />
+                <Label Text="{Binding BusyText}" TextColor="White" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
+        </Grid>
 
-            <VerticalStackLayout Spacing="4">
-                <Label Text="Tương phản" TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
-                <Slider Minimum="-1" Maximum="1" Value="{Binding Contrast}" />
-            </VerticalStackLayout>
+        <!-- Thanh dưới cùng: Vector hoá / Lưu vào thư viện ảnh / Chia sẻ / Hoàn thành, icon + tên mỗi nút (design
+             pass, 2026-10-27: "các icon ở phần toolbar bottom cần có cả icon và name giống như docscanner"). -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="4" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Edit}" Text="Vector hoá" Command="{Binding VectorizeCommand}" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Save}" Text="Lưu ảnh" Command="{Binding SaveToGalleryCommand}" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Share}" Text="Chia sẻ" Command="{Binding ExportCommand}" />
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Checked}" Text="Hoàn thành" IsActive="True" Command="{Binding FinishCommand}" />
+        </Grid>
 
-            <Button Text="Lưu chỉnh màu" Command="{Binding SaveColorCommand}"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}"
-                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-
-            <BoxView HeightRequest="1" BackgroundColor="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
-
-            <Label Text="Vector hoá &amp; Xuất" FontAttributes="Bold" FontSize="18"
-                   TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-            <Label Text="Bản v1: tạo đường viền cắt (cut path) 1 màu, dùng được cho máy cắt decal/in chuyển nhiệt. Chưa phải vector tách nhiều vùng màu."
-                   FontSize="12" TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
-
-            <Button Text="Vector hoá" Command="{Binding VectorizeCommand}"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
-                    TextColor="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" FontAttributes="Bold" />
-
-            <Button Text="Xuất / Chia sẻ" Command="{Binding ExportCommand}"
-                    BackgroundColor="Transparent" BorderWidth="1.5"
-                    BorderColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
-                    TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
-            <Label Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" HorizontalTextAlignment="Center" />
-        </VerticalStackLayout>
-    </ScrollView>
+        <!-- Confirm/alert dialog overlay (added 2026-10-27) — EditViewModel used 6 separate native
+             DisplayAlert calls before this pass (save-color confirmation, vectorize result/error, storage
+             permission, save-to-gallery result); all now go through this same AppDialog. -->
+        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="3" />
+    </Grid>
 </ContentPage>
