@@ -18,7 +18,16 @@ public static class GuidedFilter
     /// scales with pixel count, and a real phone photo (12+ MP) at full resolution would be tens of millions of
     /// doubles across 6 accumulator arrays, too slow and too much memory for a mid-range phone. The refined
     /// alpha is upscaled back to the mask's original size on return, so callers never see the downscale.</summary>
-    public static SKBitmap Refine(SKBitmap guide, SKBitmap alphaMask, int maxDimension = 1400, int radius = 8, float epsilon = 1e-3f)
+    // 700, not the original 1400 (owner's report, 2026-10-28: a real device left "Đang tách nền" completely
+    // unresponsive to input for minutes, confirmed via `adb shell dumpsys gfxinfo` showing severe input-latency
+    // spikes even AFTER capping ONNX Runtime's own thread count and lowering this call's OS thread priority --
+    // neither of which can prevent a .NET GC pause, which stops ALL managed threads including the UI thread
+    // regardless of OS scheduling priority. At 1400px this method allocates six double[] SAT arrays plus six
+    // float[] arrays sized to the pixel count -- roughly 1.5M pixels * 8 bytes * 6 + * 4 bytes * 6 ≈ 100MB+ for
+    // ONE call -- a very plausible source of heavy GC churn. Halving the working dimension cuts that by ~4x
+    // (area scales with the square); still well above the 320px model's own resolution, so most of the
+    // edge-refinement benefit this method exists for is kept.
+    public static SKBitmap Refine(SKBitmap guide, SKBitmap alphaMask, int maxDimension = 700, int radius = 8, float epsilon = 1e-3f)
     {
         int origWidth = alphaMask.Width, origHeight = alphaMask.Height;
         float scale = Math.Min(1f, maxDimension / (float)Math.Max(origWidth, origHeight));

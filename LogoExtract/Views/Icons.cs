@@ -19,4 +19,5 @@ public static class Icons
     public const string CropFree = "";  // crop_free -- "Chọn vùng & tách lại"
     public const string Close = "";     // close -- "Huỷ"
     public const string Camera = "";    // photo_camera -- "Chụp ảnh"
+    public const string Refresh = ""; // refresh -- "Tách lại nền" (HomePage's status-override button)
 }

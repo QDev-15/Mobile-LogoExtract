@@ -7,6 +7,7 @@
              x:Class="LogoExtract.Views.HomePage"
              x:DataType="vm:ItemsViewModel"
              Title="Logo Extract"
+             Shell.NavBarIsVisible="False"
              BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
 
     <!-- Design pass, 2026-10-27, referencing DocScanner/PdfReader's own look (owner's report: "giao diện vẫn xấu
@@ -93,13 +94,38 @@
                                 <VerticalStackLayout Grid.Column="1" Padding="12,0" VerticalOptions="Center" Spacing="5">
                                     <Label Text="{Binding Name}" FontSize="14" FontAttributes="Bold" LineBreakMode="TailTruncation"
                                            TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-                                    <!-- Text color is per-state (StateTextColor), not always White — the "Hoàn tất"
-                                         badge's success-green fill needs dark text to clear WCAG AA (see
-                                         ItemRow.StateTextColor's own remarks). -->
-                                    <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
-                                            BackgroundColor="{Binding StateColor}" Stroke="Transparent">
-                                        <Label Text="{Binding StateText}" TextColor="{Binding StateTextColor}" FontSize="11" FontAttributes="Bold" />
-                                    </Border>
+                                    <HorizontalStackLayout Spacing="8">
+                                        <!-- Text color is per-state (StateTextColor), not always White — the "Hoàn tất"
+                                             badge's success-green fill needs dark text to clear WCAG AA (see
+                                             ItemRow.StateTextColor's own remarks). -->
+                                        <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
+                                                BackgroundColor="{Binding StateColor}" Stroke="Transparent">
+                                            <Label Text="{Binding StateText}" TextColor="{Binding StateTextColor}" FontSize="11" FontAttributes="Bold" />
+                                        </Border>
+                                        <!-- Manual status-override button (owner's request, 2026-10-28, "ở màn dashboad
+                                             phải có button thay đổi trạng thái"): own TapGestureRecognizer, separate
+                                             from the row's own Open-on-tap one above, so tapping this never also opens
+                                             the item. "Đánh dấu hoàn thành" from Imported skips the model entirely
+                                             (owner's workaround for the no-timeout hang under investigation the same
+                                             day); from any later state it's "Tách lại nền", which resets to Imported
+                                             and re-runs the real model right away. -->
+                                        <Border StrokeShape="RoundRectangle 8" Padding="8,2" HorizontalOptions="Start"
+                                                BackgroundColor="Transparent"
+                                                Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.ToggleStateCommand}"
+                                                                       CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <HorizontalStackLayout Spacing="3">
+                                                <Label Text="{Binding ToggleStateIcon}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="12"
+                                                       VerticalTextAlignment="Center"
+                                                       TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Label Text="{Binding ToggleStateLabel}" FontSize="11" FontAttributes="Bold"
+                                                       VerticalTextAlignment="Center"
+                                                       TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                    </HorizontalStackLayout>
                                 </VerticalStackLayout>
                             </Grid>
                         </Border>

@@ -30,6 +30,13 @@ public partial class SegmentViewModel : ObservableObject
     // only existed once segmentation finished.
     private int _generation;
 
+    // Owner's report, 2026-10-28: a stuck Release build "treo ở trạng thái đang tách nền ... có vẻ nó không có
+    // timeout" -- InferenceSession.Run truly has no cancellation hook (see _generation's own comment), so this
+    // cannot abort the ONNX call itself, but it DOES stop the spinner/IsBusy from waiting on it forever: past
+    // this, the result is discarded (observed via the continuation below so a late fault doesn't become an
+    // unobserved-exception crash) and the user gets an alert with a real way forward (retry, or "Chọn vùng").
+    private static readonly TimeSpan SegmentTimeout = TimeSpan.FromSeconds(30);
+
     public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog)
     {
         _store = store;
@@ -138,7 +145,19 @@ public partial class SegmentViewModel : ObservableObject
         SKBitmap mask;
         try
         {
-            mask = await Task.Run(() => _segmentation.Value.Segment(image).AlphaMask);
+            Task<SKBitmap> segmentTask = Task.Run(() => BackgroundPriority.RunLowPriority(() => _segmentation.Value.Segment(image).AlphaMask));
+            if (await Task.WhenAny(segmentTask, Task.Delay(SegmentTimeout)) != segmentTask)
+            {
+                Android.Util.Log.Error("LogoExtractPerf", $"[Load] segmentation TIMED OUT after {SegmentTimeout.TotalSeconds}s");
+                if (generation == _generation)
+                {
+                    IsBusy = false;
+                    await _dialog.AlertAsync("Quá lâu", "Tách nền mất quá nhiều thời gian. Thử lại hoặc dùng \"Chọn vùng\" để tô tay.");
+                }
+                _ = segmentTask.ContinueWith(ObserveLateFault, TaskScheduler.Default);
+                return;
+            }
+            mask = await segmentTask;
         }
         catch (Exception ex)
         {
@@ -243,12 +262,26 @@ public partial class SegmentViewModel : ObservableObject
         SKBitmap newMask;
         try
         {
-            newMask = await Task.Run(() =>
+            Task<SKBitmap> segmentTask = Task.Run(() => BackgroundPriority.RunLowPriority(() =>
             {
                 using SKBitmap cropped = CropBitmap(image, cropRect);
                 using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
                 return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
-            });
+            }));
+            // Same timeout reasoning as RunAutoSegmentAsync's own (see SegmentTimeout's field comment).
+            if (await Task.WhenAny(segmentTask, Task.Delay(SegmentTimeout)) != segmentTask)
+            {
+                Android.Util.Log.Error("LogoExtractPerf", $"[Load] region re-segment TIMED OUT after {SegmentTimeout.TotalSeconds}s");
+                if (generation == _generation)
+                {
+                    IsBusy = false;
+                    IsSelectingRegion = false;
+                    await _dialog.AlertAsync("Quá lâu", "Tách theo vùng đã chọn mất quá nhiều thời gian. Thử lại.");
+                }
+                _ = segmentTask.ContinueWith(ObserveLateFault, TaskScheduler.Default);
+                return;
+            }
+            newMask = await segmentTask;
         }
         catch (Exception ex)
         {
@@ -304,6 +337,17 @@ public partial class SegmentViewModel : ObservableObject
             Math.Min(imageHeight, rect.Bottom + padY));
     }
 
+    /// <summary>Attached to a segmentation Task that the UI already gave up on waiting for (see SegmentTimeout's
+    /// field comment) so an eventual fault on it surfaces in logcat instead of crashing the process as an
+    /// unobserved task exception; the (possibly successful) result itself is simply discarded.</summary>
+    private static void ObserveLateFault(Task<SKBitmap> task)
+    {
+        if (task.Exception != null)
+            Android.Util.Log.Error("LogoExtractPerf", $"[Load] late segmentation result after timeout: {task.Exception}");
+        else if (task.IsCompletedSuccessfully)
+            task.Result.Dispose();
+    }
+
     private static SKBitmap CloneBitmap(SKBitmap source)
     {
         var copy = new SKBitmap(source.Width, source.Height, source.ColorType, source.AlphaType);
@@ -341,43 +385,8 @@ public partial class SegmentViewModel : ObservableObject
         string folder = _store.ItemFolder(_item.Id);
         await Task.Run(() =>
         {
-            using (SKData maskData = editedMask.Encode(SKEncodedImageFormat.Png, 100))
-            using (FileStream maskStream = File.Create(Path.Combine(folder, "mask.png")))
-                maskData.SaveTo(maskStream);
-
-            // Color decontamination BEFORE compositing (owner's report, 2026-10-27: "viền trắng nhìn ảo quá"):
-            // without this, a soft-alpha edge pixel keeps its full original color (a blend of logo + fabric),
-            // which leaks the old fabric color through as a halo once composited onto anything else. See
-            // ColorDecontamination's own remarks for the full reasoning.
-            using SKBitmap decontaminated = ColorDecontamination.Decontaminate(_image, editedMask);
-
-            // Composite via raw pixel spans, not GetPixel/SetPixel per pixel (review 2026-10-27): a real phone
-            // photo is routinely 12+ MP, and GetPixel/SetPixel's per-call overhead made this loop visibly slow
-            // (multi-second) on a photo that size -- span access turns it into a tight byte-copy loop instead.
-            using var cutout = new SKBitmap(_image.Width, _image.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
-            using (SKPixmap imagePx = decontaminated.PeekPixels())
-            using (SKPixmap maskPx = editedMask.PeekPixels())
-            using (SKPixmap cutoutPx = cutout.PeekPixels())
-            {
-                ReadOnlySpan<byte> imageBytes = imagePx.GetPixelSpan();
-                ReadOnlySpan<byte> maskBytes = maskPx.GetPixelSpan();
-                Span<byte> cutoutBytes = cutoutPx.GetPixelSpan();
-                for (int i = 0; i + 3 < cutoutBytes.Length; i += 4)
-                {
-                    cutoutBytes[i] = imageBytes[i];
-                    cutoutBytes[i + 1] = imageBytes[i + 1];
-                    cutoutBytes[i + 2] = imageBytes[i + 2];
-                    cutoutBytes[i + 3] = maskBytes[i]; // mask value lives in its R channel (see field comment on _mask)
-                }
-            }
-            using (SKData cutoutData = cutout.Encode(SKEncodedImageFormat.Png, 100))
-            using (FileStream cutoutStream = File.Create(Path.Combine(folder, "cutout.png")))
-                cutoutData.SaveTo(cutoutStream);
-
-            using SKBitmap thumb = cutout.Resize(new SKImageInfo(320, (int)(320.0 * cutout.Height / cutout.Width)), SKSamplingOptions.Default)!;
-            using (SKData thumbData = thumb.Encode(SKEncodedImageFormat.Png, 100))
-            using (FileStream thumbStream = File.Create(Path.Combine(folder, "thumb.png")))
-                thumbData.SaveTo(thumbStream);
+            CutoutCompositor.WriteMask(editedMask, folder);
+            CutoutCompositor.WriteCutoutAndThumb(_image, editedMask, folder);
         });
 
         _store.Update(_item.Id, i => i with { State = ItemState.Segmented, CutoutFile = "cutout.png", ThumbFile = "thumb.png" });

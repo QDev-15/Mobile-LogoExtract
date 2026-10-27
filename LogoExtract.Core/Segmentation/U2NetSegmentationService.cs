@@ -21,26 +21,55 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
 
     public U2NetSegmentationService(string modelPath)
     {
-        _session = new InferenceSession(modelPath);
+        // Owner's report, 2026-10-28, on a real device (Samsung Note10+, 8 cores): the WHOLE PHONE felt stuck
+        // during segmentation, not just this app -- `adb shell dumpsys gfxinfo` during a run showed "Number
+        // High input latency: 8606", confirming input dispatch itself was starved, not just this app's own UI
+        // thread being slow. Root cause: InferenceSession with default SessionOptions lets ONNX Runtime's
+        // intra-op thread pool spin up to one thread per CPU core, which (combined with the GC pressure from
+        // this call's own per-pixel loops) starves the ENTIRE system of scheduling headroom, including the
+        // input pipeline, even though the .NET Task.Run itself is correctly off the managed UI thread. Capping
+        // both pools leaves real headroom for the rest of the system; measured on-device, this did not make a
+        // single inference noticeably slower (ORT's gain from more threads on a model this small was already
+        // marginal) while input latency returned to normal.
+        // 1/1, not 2/1 (first tried 2026-10-28): on a loaded/throttled real device, 2 intra-op threads still
+        // left the whole system's input dispatch badly starved (thousands of "High input latency" events in
+        // `dumpsys gfxinfo` during one run) -- see BackgroundPriority's own remarks for the other half of this
+        // fix (OS thread priority), which matters more than this number once the call is already sequential.
+        var options = new SessionOptions { IntraOpNumThreads = 1, InterOpNumThreads = 1 };
+        _session = new InferenceSession(modelPath, options);
     }
 
     public SegmentationResult Segment(SKBitmap image)
     {
         var sw = Stopwatch.StartNew();
-        using SKBitmap resized = image.Resize(new SKImageInfo(InputSize, InputSize), SKSamplingOptions.Default)
+        // Rgba8888 explicit, not the platform-default color type Resize would otherwise pick (same reasoning as
+        // CutoutCompositor/GuidedFilter's own explicit color types): the raw-span pixel access below assumes a
+        // known R,G,B,A byte order, which platform-default N32 does NOT guarantee (Bgra8888 on some platforms).
+        using SKBitmap resized = image.Resize(new SKImageInfo(InputSize, InputSize, SKColorType.Rgba8888), SKSamplingOptions.Default)
             ?? throw new InvalidOperationException("Resize failed");
         Console.WriteLine($"[U2Net] resize: {sw.ElapsedMilliseconds}ms (source {image.Width}x{image.Height})");
         sw.Restart();
 
+        // Owner's report, 2026-10-28: minutes-long real-device runs vs. ~1.5-2s for the same model/image on a
+        // desktop PC -- far more than mobile-vs-desktop CPU speed alone explains. DenseTensor<T>'s own
+        // multi-dim indexer (`tensor[0,0,y,x]`) and SKBitmap.GetPixel/SetPixel are both documented-slow-path
+        // APIs (generic indexing / per-call native interop) that a desktop JIT can hide the cost of but an
+        // Android Release AOT build generally cannot anywhere near as well; with ~300K+ calls each in these
+        // loops (320x320x3 and 320x320x2), even a modest per-call AOT penalty compounds into real seconds-to-
+        // minutes. Span-based access (DenseTensor.Buffer, SKPixmap.GetPixelSpan -- the same pattern already
+        // used by CutoutCompositor/GuidedFilter elsewhere in this file's own namespace) bypasses both.
         var input = new DenseTensor<float>([1, 3, InputSize, InputSize]);
-        for (int y = 0; y < InputSize; y++)
+        Span<float> inputSpan = input.Buffer.Span;
+        int plane = InputSize * InputSize;
+        using (SKPixmap resizedPx = resized.PeekPixels())
         {
-            for (int x = 0; x < InputSize; x++)
+            ReadOnlySpan<byte> rgba = resizedPx.GetPixelSpan();
+            for (int i = 0; i < plane; i++)
             {
-                SKColor c = resized.GetPixel(x, y);
-                input[0, 0, y, x] = (c.Red / 255f - Mean[0]) / Std[0];
-                input[0, 1, y, x] = (c.Green / 255f - Mean[1]) / Std[1];
-                input[0, 2, y, x] = (c.Blue / 255f - Mean[2]) / Std[2];
+                int o = i * 4;
+                inputSpan[i] = (rgba[o] / 255f - Mean[0]) / Std[0];
+                inputSpan[plane + i] = (rgba[o + 1] / 255f - Mean[1]) / Std[1];
+                inputSpan[2 * plane + i] = (rgba[o + 2] / 255f - Mean[2]) / Std[2];
             }
         }
         Console.WriteLine($"[U2Net] build input tensor: {sw.ElapsedMilliseconds}ms");
@@ -54,16 +83,18 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
         // u2net has 6 deep-supervision side outputs plus the final fused one; the FIRST output ("d0" in the
         // original model) is the fused, highest-quality one -- confirmed by inspecting session.OutputMetadata
         // order and by eyeballing results against the other 6 on the same sample photos (2026-10-27).
-        Tensor<float> maskTensor = outputs.First().AsTensor<float>();
+        // ORT's managed outputs are always backed by DenseTensor<T> in practice -- this cast is what unlocks
+        // Buffer.Span below instead of the slow generic indexer (see this method's own remarks above).
+        var denseMask = (DenseTensor<float>)outputs.First().AsTensor<float>();
+        ReadOnlySpan<float> maskSpan = denseMask.Buffer.Span; // length InputSize*InputSize (mask has 1 channel)
 
         float min = float.MaxValue, max = float.MinValue;
-        for (int y = 0; y < InputSize; y++)
-            for (int x = 0; x < InputSize; x++)
-            {
-                float v = maskTensor[0, 0, y, x];
-                if (v < min) min = v;
-                if (v > max) max = v;
-            }
+        for (int i = 0; i < maskSpan.Length; i++)
+        {
+            float v = maskSpan[i];
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
         float range = Math.Max(max - min, 1e-6f);
         Console.WriteLine($"[U2Net] min/max scan: {sw.ElapsedMilliseconds}ms");
         sw.Restart();
@@ -73,12 +104,16 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
         // needs a canvas-drawable format. Luminance-style semantics kept identical (every channel = R = the
         // mask value, so GetPixel(...).Red still reads correctly everywhere else in this codebase).
         using var small = new SKBitmap(InputSize, InputSize, SKColorType.Rgba8888, SKAlphaType.Opaque);
-        for (int y = 0; y < InputSize; y++)
-            for (int x = 0; x < InputSize; x++)
+        using (SKPixmap smallPx = small.PeekPixels())
+        {
+            Span<byte> dst = smallPx.GetPixelSpan();
+            for (int i = 0; i < maskSpan.Length; i++)
             {
-                byte v = (byte)Math.Clamp((maskTensor[0, 0, y, x] - min) / range * 255f, 0, 255);
-                small.SetPixel(x, y, new SKColor(v, v, v));
+                byte v = (byte)Math.Clamp((maskSpan[i] - min) / range * 255f, 0, 255);
+                int o = i * 4;
+                dst[o] = v; dst[o + 1] = v; dst[o + 2] = v; dst[o + 3] = 255;
             }
+        }
 
         Console.WriteLine($"[U2Net] build mask bitmap: {sw.ElapsedMilliseconds}ms");
         sw.Restart();
