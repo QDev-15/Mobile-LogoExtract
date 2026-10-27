@@ -85,7 +85,10 @@
 		<Message Importance="high" Condition="'@(_SignedAab)' != ''" Text="Release build copied to $(_ReleaseDir) (aab + mapping.txt)" />
 	</Target>
 	<ItemGroup>
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0A0B0D" />
+		<!-- Color is the flat fallback background some platform paths use even with the SVG present; kept
+		     consistent with the gradient's dominant brand tone (Primary mint) now that appicon.svg is a real
+		     hand-authored mint gradient, not the near-black template placeholder. -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="1" Color="#1FAE82" />
 		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0A0B0D" BaseSize="160,160" />
 		<MauiImage Include="Resources\Images\*" />
 		<MauiFont Include="Resources\Fonts\*" />

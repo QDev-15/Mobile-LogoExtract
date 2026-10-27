@@ -19,6 +19,14 @@ public partial class SegmentViewModel : ObservableObject
     private LogoItem? _item;
     private SKBitmap? _image;
     private SKBitmap? _mask;
+    // Bumped by StartRegionSelect to invalidate whatever auto-segment/region-resegment is currently running: the
+    // ONNX call inside RunAutoSegmentAsync/ConfirmRegionSelectAsync has no cancellation hook (InferenceSession.Run
+    // is one atomic blocking call), so this can't actually abort it mid-inference -- it only makes that call's
+    // result check this counter when it finishes and discard itself instead of overwriting the region-select
+    // state the user has since moved into. Owner's report, 2026-10-27: tapping "Chọn vùng" while "Đang tách
+    // nền..." was still running did nothing, because StartRegionSelect used to require a non-null _mask that
+    // only existed once segmentation finished.
+    private int _generation;
 
     public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation)
     {
@@ -64,35 +72,62 @@ public partial class SegmentViewModel : ObservableObject
 
         IsBusy = true;
         BusyText = "Đang tách nền...";
-        Android.Util.Log.Info("LogoExtractPerf", "[Load] before Task.Run");
-        (SKBitmap image, SKBitmap mask) = await Task.Run(() =>
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        // EXIF-oriented decode (ExifOrientation.cs): a bare SKBitmap.Decode ignores the EXIF rotation tag, so a
+        // camera photo taken upright would otherwise show sideways everywhere this image is used -- found in code
+        // review 2026-10-27, no real device photo had actually been tested through this path yet to surface it.
+        // Split out of the segmentation Task.Run (they used to be one combined call) specifically so _image is
+        // set -- and StartRegionSelect becomes usable -- as soon as this fast decode finishes, without waiting
+        // for segmentation (slow, and not preemptible -- see RunAutoSegmentAsync's own comment).
+        SKBitmap image = await Task.Run(() => ExifOrientation.DecodeOriented(path));
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
+        _image = image;
+
+        if (item.CutoutFile != null)
         {
-            Android.Util.Log.Info("LogoExtractPerf", "[Load] Task.Run started");
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            // EXIF-oriented decode (ExifOrientation.cs): a bare SKBitmap.Decode ignores the EXIF rotation tag,
-            // so a camera photo taken upright would otherwise show sideways everywhere this image is used --
-            // found in code review 2026-10-27, no real device photo had actually been tested through this path
-            // yet to surface it.
-            SKBitmap image = ExifOrientation.DecodeOriented(path);
-            Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
             sw.Restart();
             // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it
             // does not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. If
             // that file is missing or unreadable despite CutoutFile being set (deleted/corrupted externally),
-            // fall back to running segmentation fresh rather than handing the editor a null mask (silent dead
+            // fall through to running segmentation fresh rather than handing the editor a null mask (silent dead
             // screen -- the original bug here, found in review, not observed on-device).
             // Forced to Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing
             // below reads this mask's bytes directly assuming that exact channel order.
-            SKBitmap? savedMask = item.CutoutFile != null ? BitmapIO.DecodeAsRgba8888(maskPath) : null;
-            Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms (CutoutFile={item.CutoutFile ?? "null"})");
-            sw.Restart();
-            Android.Util.Log.Info("LogoExtractPerf", "[Load] about to access _segmentation.Value");
-            SKBitmap mask = savedMask ?? _segmentation.Value.Segment(image).AlphaMask;
-            Android.Util.Log.Info("LogoExtractPerf", $"[Load] segmentation total: {sw.ElapsedMilliseconds}ms");
-            return (image, mask);
-        });
-        Android.Util.Log.Info("LogoExtractPerf", "[Load] Task.Run returned");
-        _image = image;
+            SKBitmap? savedMask = await Task.Run(() => BitmapIO.DecodeAsRgba8888(maskPath));
+            Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms");
+            if (savedMask != null)
+            {
+                _mask = savedMask;
+                IsBusy = false;
+                ImagesReady?.Invoke(image, savedMask);
+                return;
+            }
+        }
+        await RunAutoSegmentAsync();
+    }
+
+    /// <summary>Runs (or re-runs) auto-segmentation on the already-decoded <see cref="_image"/> and publishes the
+    /// result -- unless <see cref="StartRegionSelect"/> bumped <see cref="_generation"/> while this was running,
+    /// in which case the result is discarded instead of overwriting the region-select state the user moved into.
+    /// Called from <see cref="LoadAsync"/> (first load, no saved mask) and from <see cref="CancelRegionSelect"/>/
+    /// <see cref="ConfirmRegionSelectAsync"/> when region-select is abandoned before any real mask ever existed
+    /// (it was interrupted before finishing the first time).</summary>
+    private async Task RunAutoSegmentAsync()
+    {
+        if (_image == null) return;
+        SKBitmap image = _image;
+        int generation = _generation;
+        IsBusy = true;
+        BusyText = "Đang tách nền...";
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        SKBitmap mask = await Task.Run(() => _segmentation.Value.Segment(image).AlphaMask);
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] segmentation total: {sw.ElapsedMilliseconds}ms");
+        if (generation != _generation)
+        {
+            Android.Util.Log.Info("LogoExtractPerf", "[Load] segmentation result discarded -- region-select interrupted it");
+            mask.Dispose();
+            return;
+        }
         _mask = mask;
         IsBusy = false;
         ImagesReady?.Invoke(image, mask);
@@ -113,25 +148,35 @@ public partial class SegmentViewModel : ObservableObject
     [RelayCommand]
     private void StartRegionSelect()
     {
-        if (_image == null || _mask == null) return;
+        if (_image == null || IsSelectingRegion) return;
+        // Interrupts whatever auto-segment/region-resegment is still running in the background (see _generation's
+        // own field comment for why this can only discard that call's eventual result, not actually abort the
+        // ONNX inference already in flight) -- region-select takes priority over waiting for it.
+        _generation++;
+        IsBusy = false;
         IsSelectingRegion = true;
         // Editor.Load (below, via ImagesReady) disposes whatever mask it was previously showing -- that is
         // THIS _mask field's own instance (Editor and the ViewModel have shared the same object since
         // LoadAsync). Clone it first so CancelRegionSelect still has a live bitmap to redisplay; the original
-        // gets disposed by Editor.Load exactly as it always has for a mask change.
-        _mask = CloneBitmap(_mask);
+        // gets disposed by Editor.Load exactly as it always has for a mask change. _mask can legitimately still
+        // be null here (interrupted before segmentation ever finished once) -- CancelRegionSelect/
+        // ConfirmRegionSelectAsync both handle that case by re-running segmentation instead of redisplaying.
+        if (_mask != null) _mask = CloneBitmap(_mask);
         var blank = new SKBitmap(_image.Width, _image.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
         using (SKCanvas c = new(blank)) c.Clear(new SKColor(0, 0, 0, 255)); // R=0 everywhere = "not selected" (R channel carries the mask value, see MaskEditorView)
         ImagesReady?.Invoke(_image, blank); // reuses the same Editor.Load wiring SegmentPage already has
     }
 
     /// <summary>Discards whatever was brushed in region-select mode and goes back to showing the last real
-    /// mask (the auto result, or a previous region-select result) untouched.</summary>
+    /// mask (the auto result, or a previous region-select result) untouched -- or, if region-select interrupted
+    /// the very first auto-segment before it ever finished (so there is no real mask to go back to), re-runs it
+    /// for real this time instead of leaving the editor on a stale blank mask.</summary>
     public void CancelRegionSelect()
     {
-        if (_image == null || _mask == null) return;
+        if (_image == null) return;
         IsSelectingRegion = false;
-        ImagesReady?.Invoke(_image, _mask);
+        if (_mask != null) ImagesReady?.Invoke(_image, _mask);
+        else _ = RunAutoSegmentAsync();
     }
 
     /// <summary>Takes ownership of <paramref name="selectionMask"/> (disposed here, same as
@@ -147,9 +192,11 @@ public partial class SegmentViewModel : ObservableObject
         {
             IsSelectingRegion = false;
             if (_mask != null) ImagesReady?.Invoke(_image, _mask);
+            else _ = RunAutoSegmentAsync(); // same "nothing to fall back to" case as CancelRegionSelect
             return;
         }
 
+        int generation = _generation;
         IsBusy = true;
         BusyText = "Đang tách theo vùng đã chọn...";
         SKBitmap image = _image;
@@ -163,6 +210,7 @@ public partial class SegmentViewModel : ObservableObject
             using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
             return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
         });
+        if (generation != _generation) { newMask.Dispose(); return; } // StartRegionSelect fired again before this finished -- see _generation's own comment
         IsBusy = false;
         IsSelectingRegion = false;
         _mask?.Dispose();
