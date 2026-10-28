@@ -125,16 +125,21 @@ public partial class SegmentViewModel : ObservableObject
             await _dialog.AlertAsync("Lỗi", "Không thể mở ảnh.");
             return;
         }
-        await RunAutoSegmentAsync();
+        // autoSaveOnSuccess: true -- owner's request, 2026-10-28, "khi tách nền xong tự động lưu không cần
+        // action xong rồi lưu": a FRESH auto-segment (this call site only, never the CancelRegionSelect/
+        // ConfirmRegionSelectAsync fallback below) commits straight away instead of waiting for the user to
+        // review and tap "Xong". "Chọn vùng" is still fully available to interrupt this BEFORE it finishes.
+        await RunAutoSegmentAsync(autoSaveOnSuccess: true);
     }
 
     /// <summary>Runs (or re-runs) auto-segmentation on the already-decoded <see cref="_image"/> and publishes the
     /// result -- unless <see cref="StartRegionSelect"/> bumped <see cref="_generation"/> while this was running,
     /// in which case the result is discarded instead of overwriting the region-select state the user moved into.
-    /// Called from <see cref="LoadAsync"/> (first load, no saved mask) and from <see cref="CancelRegionSelect"/>/
-    /// <see cref="ConfirmRegionSelectAsync"/> when region-select is abandoned before any real mask ever existed
-    /// (it was interrupted before finishing the first time).</summary>
-    private async Task RunAutoSegmentAsync()
+    /// Called from <see cref="LoadAsync"/> (first load, no saved mask, <paramref name="autoSaveOnSuccess"/> true)
+    /// and from <see cref="CancelRegionSelect"/>/<see cref="ConfirmRegionSelectAsync"/> (default false -- the
+    /// user just engaged with region-select and should get to review before anything commits) when region-select
+    /// is abandoned before any real mask ever existed (it was interrupted before finishing the first time).</summary>
+    private async Task RunAutoSegmentAsync(bool autoSaveOnSuccess = false)
     {
         if (_image == null) return;
         SKBitmap image = _image;
@@ -184,6 +189,11 @@ public partial class SegmentViewModel : ObservableObject
             return;
         }
         _mask = mask;
+        if (autoSaveOnSuccess)
+        {
+            await SaveAsync(mask);
+            return;
+        }
         IsBusy = false;
         ImagesReady?.Invoke(image, mask);
     }

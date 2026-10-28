@@ -36,7 +36,10 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
         // `dumpsys gfxinfo` during one run) -- see BackgroundPriority's own remarks for the other half of this
         // fix (OS thread priority), which matters more than this number once the call is already sequential.
         var options = new SessionOptions { IntraOpNumThreads = 1, InterOpNumThreads = 1 };
+        Console.WriteLine($"[U2Net] SessionOptions: IntraOpNumThreads={options.IntraOpNumThreads}, InterOpNumThreads={options.InterOpNumThreads}");
+        var sw = Stopwatch.StartNew();
         _session = new InferenceSession(modelPath, options);
+        Console.WriteLine($"[U2Net] InferenceSession ctor: {sw.ElapsedMilliseconds}ms");
     }
 
     public SegmentationResult Segment(SKBitmap image)

@@ -16,8 +16,13 @@ public static class BackgroundPriority
 {
     public static T RunLowPriority<T>(Func<T> work)
     {
-        Android.OS.ThreadPriority original = Android.OS.Process.GetThreadPriority(Android.OS.Process.MyTid());
+        int tid = Android.OS.Process.MyTid();
+        Android.OS.ThreadPriority original = Android.OS.Process.GetThreadPriority(tid);
         Android.OS.Process.SetThreadPriority(Android.OS.ThreadPriority.Background);
+        // Verification log, not just a comment -- confirms this actually took effect on THIS device/build
+        // instead of silently no-op'ing (e.g. if a future Android version revokes the permission this needs).
+        Android.OS.ThreadPriority confirmed = Android.OS.Process.GetThreadPriority(tid);
+        Android.Util.Log.Info("LogoExtractPerf", $"[Priority] tid={tid} was={original} requested=Background confirmed={confirmed}");
         try
         {
             return work();
@@ -27,6 +32,7 @@ public static class BackgroundPriority
             // Thread-pool threads are reused -- never leave a lowered priority stuck on one for unrelated work
             // that runs on it next.
             Android.OS.Process.SetThreadPriority(original);
+            Android.Util.Log.Info("LogoExtractPerf", $"[Priority] tid={tid} restored to {original}");
         }
     }
 }
