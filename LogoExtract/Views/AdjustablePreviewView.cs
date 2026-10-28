@@ -12,7 +12,8 @@ namespace LogoExtract.Views;
 public enum PreviewBackgroundKind { Checkerboard, White, Black, Gray }
 
 /// <summary>EditPage's color-adjusted cutout preview, with pinch-zoom/pan -- raw SkiaSharp canvas + hand-rolled
-/// touch handling, the same shape as <see cref="MaskEditorView"/>'s own zoom (SegmentPage), NOT MAUI's
+/// touch handling, the same shape as <see cref="MaskEditorView"/>'s own zoom (the brush sub-toolbar mode of
+/// this same merged EditPage, 2026-10-29), NOT MAUI's
 /// PinchGestureRecognizer / View.Scale+TranslationX/Y. Owner's report, 2026-10-27: "zoom vẫn bị giật lag ...
 /// so sánh với các view image ở màn khác ... zoom rất mượt" -- after isolating the transform onto its own
 /// wrapper Grid still didn't fix it, pointing at MAUI's own gesture-recognizer/property-binding pipeline on
@@ -40,6 +41,9 @@ public sealed class AdjustablePreviewView : SKCanvasView
     public static readonly BindableProperty ContrastProperty =
         BindableProperty.Create(nameof(Contrast), typeof(double), typeof(AdjustablePreviewView), 0.0, propertyChanged: OnAdjustChanged);
 
+    public static readonly BindableProperty SaturationProperty =
+        BindableProperty.Create(nameof(Saturation), typeof(double), typeof(AdjustablePreviewView), 0.0, propertyChanged: OnAdjustChanged);
+
     public SKBitmap? SourceBitmap
     {
         get => (SKBitmap?)GetValue(SourceBitmapProperty);
@@ -56,6 +60,12 @@ public sealed class AdjustablePreviewView : SKCanvasView
     {
         get => (double)GetValue(ContrastProperty);
         set => SetValue(ContrastProperty, value);
+    }
+
+    public double Saturation
+    {
+        get => (double)GetValue(SaturationProperty);
+        set => SetValue(SaturationProperty, value);
     }
 
     /// <summary>What this view paints behind the image, before the image itself -- see <see cref="PreviewBackgroundKind"/>.</summary>
@@ -216,7 +226,16 @@ public sealed class AdjustablePreviewView : SKCanvasView
         float offX = (CanvasSize.Width - _bitmap.Width * scale) / 2 + _panX;
         float offY = (CanvasSize.Height - _bitmap.Height * scale) / 2 + _panY;
 
-        using var paint = new SKPaint { ColorFilter = SKColorFilter.CreateColorMatrix(BuildColorMatrix(Brightness, Contrast)) };
+        // Two INDEPENDENT color matrices composed, not one hand-merged matrix: the 2026-10-28 brightness/contrast
+        // bug (see BuildColorMatrix's own remarks) came from exactly this kind of manual 4x5 matrix arithmetic,
+        // so saturation gets its own matrix (BuildSaturationMatrix) instead of a third term folded into the same
+        // one. CreateCompose(outer, inner) applies inner first -- brightness/contrast first, saturation second,
+        // matching the order LogoExtract.Core.Imaging.ColorAdjustFilter.Apply's own two passes run in, so the
+        // live preview and the full-resolution export agree.
+        using SKColorFilter brightnessContrastFilter = SKColorFilter.CreateColorMatrix(BuildColorMatrix(Brightness, Contrast));
+        using SKColorFilter saturationFilter = SKColorFilter.CreateColorMatrix(BuildSaturationMatrix(Saturation));
+        using SKColorFilter composedFilter = SKColorFilter.CreateCompose(saturationFilter, brightnessContrastFilter);
+        using var paint = new SKPaint { ColorFilter = composedFilter };
         canvas.Save();
         canvas.Translate(offX, offY);
         canvas.Scale(scale);
@@ -290,6 +309,26 @@ public sealed class AdjustablePreviewView : SKCanvasView
             contrast, 0, 0, 0, offset,
             0, contrast, 0, 0, offset,
             0, 0, contrast, 0, offset,
+            0, 0, 0, 1, 0
+        ];
+    }
+
+    /// <summary>Standard 0..1-scale saturation color matrix (merged edit screen, 2026-10-29): mixes each channel
+    /// toward/away from the pixel's own luma, using the same 0.3086/0.6094/0.0820 R/G/B weights
+    /// LogoExtract.Core.Imaging.ColorAdjustFilter's own saturation pass uses, so the live preview and the
+    /// full-resolution export agree. <paramref name="saturationNorm"/> is -1..1 (-1 = fully gray, 0 = unchanged,
+    /// +1 = oversaturated) -- composed with (not merged into) <see cref="BuildColorMatrix"/>'s own matrix via
+    /// <see cref="SKColorFilter.CreateCompose(SKColorFilter, SKColorFilter)"/> at the call site, deliberately not
+    /// combined into one matrix by hand (see that call site's own remarks on why).</summary>
+    private static float[] BuildSaturationMatrix(double saturationNorm)
+    {
+        const float sr = 0.3086f, sg = 0.6094f, sb = 0.0820f;
+        float s = (float)(1 + saturationNorm);
+        return
+        [
+            sr * (1 - s) + s, sg * (1 - s), sb * (1 - s), 0, 0,
+            sr * (1 - s), sg * (1 - s) + s, sb * (1 - s), 0, 0,
+            sr * (1 - s), sg * (1 - s), sb * (1 - s) + s, 0, 0,
             0, 0, 0, 1, 0
         ];
     }

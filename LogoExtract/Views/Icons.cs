@@ -20,6 +20,7 @@ public static class Icons
     public const string Close = "";     // close -- "Huỷ"
     public const string Camera = "";    // photo_camera -- "Chụp ảnh"
     public const string Refresh = ""; // refresh -- "Tách lại nền" (HomePage's status-override button)
+    public const string Tune = ""; // tune -- "Chỉnh sửa" (merged edit screen bottom-toolbar button that opens the brush sub-toolbar, 2026-10-29)
 
     // Settings/About/Privacy (added 2026-10-28). Codepoints copied verbatim from the identical Material Icons
     // font in the sibling PdfReader repo's own Views/Icons.cs (same MaterialIcons-Regular.ttf file) -- written

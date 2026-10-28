@@ -31,7 +31,7 @@ public partial class HomePage : ContentPage
     /// while scrolling the list). Added 2026-10-27, same shape as PdfReader's DashboardPage/DocScanner's
     /// HomePage: an open dialog closes first, then a single Back shows a toast and is consumed; only a SECOND
     /// Back within 2s actually exits (by returning false and letting Android's own default back-on-root-page
-    /// behavior proceed). ImportPage/SegmentPage/EditPage are NOT Shell roots and keep plain single-press Back
+    /// behavior proceed). ImportPage/EditPage are NOT Shell roots and keep plain single-press Back
     /// (pop to the previous screen) -- this override deliberately lives only here, not in AppShell or a shared
     /// base page, since nothing else in this app should ever need a second press to go back.</summary>
     protected override bool OnBackButtonPressed()

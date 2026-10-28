@@ -8,7 +8,8 @@ public partial class AppShell : Shell
 	{
 		InitializeComponent();
 		Routing.RegisterRoute(nameof(ImportPage), typeof(ImportPage));
-		Routing.RegisterRoute(nameof(SegmentPage), typeof(SegmentPage));
+		// SegmentPage retired (merged into EditPage, 2026-10-29) -- Home now navigates straight to EditPage,
+		// which both runs/shows segmentation progress and does color-adjust/vectorize/export.
 		Routing.RegisterRoute(nameof(EditPage), typeof(EditPage));
 		Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
 		Routing.RegisterRoute(nameof(AboutPage), typeof(AboutPage));

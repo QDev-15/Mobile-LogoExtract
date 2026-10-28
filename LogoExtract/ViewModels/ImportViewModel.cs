@@ -69,7 +69,7 @@ public partial class ImportViewModel : ObservableObject
 
         // Start segmentation right away, in the background -- NOT awaited, so this import (and a possible
         // multi-photo PickAsync loop around it) never waits on the model. Owner's report, 2026-10-28: before
-        // this, nothing ever ran segmentation until the user opened SegmentPage for this specific item, so
+        // this, nothing ever ran segmentation until the user opened the segment/edit screen for this specific item, so
         // Home's "Đang tách nền" badge on a freshly-imported item was never actually true until then.
         _coordinator.EnqueueIfNeeded(item.Id);
 

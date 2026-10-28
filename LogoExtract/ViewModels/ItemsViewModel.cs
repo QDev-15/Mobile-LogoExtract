@@ -73,11 +73,11 @@ public partial class ItemsViewModel : ObservableObject
     private readonly Lazy<ISegmentationService> _segmentation;
     private readonly SegmentationCoordinator _coordinator;
 
-    // Same GenerationGuard<string> class SegmentViewModel uses for its own region-select interruption (owner's
+    // Same GenerationGuard<string> class EditViewModel uses for its own region-select interruption (owner's
     // report, 2026-10-28: "không đồng nhất quản lý... khó theo dõi" -- this used to be a separate hand-rolled
-    // Dictionary<string,int> + a pair of local helper methods here, while SegmentViewModel tracked the identical
-    // rule with a bare int field; now both screens share one class). Per-item here (unlike SegmentViewModel,
-    // which only ever manages one item) since the dashboard can have a retry in flight for one item while acting
+    // Dictionary<string,int> + a pair of local helper methods here, while the segment-screen VM (SegmentViewModel,
+    // merged into EditViewModel 2026-10-29) tracked the identical rule with a bare int field; now both screens
+    // share one class). Per-item here (unlike EditViewModel, which only ever manages one item) since the dashboard can have a retry in flight for one item while acting
     // on another. Owner's report, 2026-10-28, about the OLD stuck build: "nó cũng đơ luôn không đổi được trạng
     // thái" -- the status button must stay a working escape hatch even while a retry for that SAME item is
     // still running in the background, so re-tapping it bumps the generation and the in-flight call discards
@@ -121,8 +121,11 @@ public partial class ItemsViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportAsync() => await Shell.Current.GoToAsync(nameof(Views.ImportPage));
 
+    // Goes straight to the merged "Chỉnh sửa" screen (owner's request, 2026-10-29: "ở Home khi chọn 1 item sẽ
+    // chuyển sang màn hình chỉnh sửa ngay") -- SegmentPage is retired; EditPage now runs/shows segmentation
+    // progress itself before falling into color-adjust mode.
     [RelayCommand]
-    private async Task OpenAsync(ItemRow row) => await Shell.Current.GoToAsync($"{nameof(Views.SegmentPage)}?itemId={row.Record.Id}");
+    private async Task OpenAsync(ItemRow row) => await Shell.Current.GoToAsync($"{nameof(Views.EditPage)}?itemId={row.Record.Id}");
 
     // Was an instant delete on tap -- the one destructive action in this app with no confirmation at all
     // (consistency pass, 2026-10-27). Same shape as every other app's delete-confirm: AppDialog.ConfirmAsync,
@@ -139,7 +142,7 @@ public partial class ItemsViewModel : ObservableObject
     /// <summary>Owner's request, 2026-10-28: a status-override button on the dashboard, for exactly the case
     /// under investigation that same day (a Release build stuck forever "Đang tách nền"). From Imported, marks
     /// the item done WITHOUT running the model -- a full-keep mask (whole photo kept, no background actually
-    /// removed) the user can brush down by hand later in SegmentPage, same as any other mask. From any later
+    /// removed) the user can brush down by hand later in EditPage's "Chỉnh sửa" sub-toolbar, same as any other mask. From any later
     /// state, sends the item back to Imported and immediately re-runs the real model, same as the owner asked:
     /// "nếu ở trạng thái hoàn thành mà chuyển thành trạng thái tách nền thì sẽ tự động tách nền".</summary>
     [RelayCommand]
@@ -158,7 +161,7 @@ public partial class ItemsViewModel : ObservableObject
         if (!ok) return;
 
         // Registers with the SAME coordinator the background import queue and Home's own "Tách lại nền" use
-        // (see SegmentationCoordinator.TryBeginExternalRun's own remarks) -- without this, opening SegmentPage
+        // (see SegmentationCoordinator.TryBeginExternalRun's own remarks) -- without this, opening EditPage
         // for this exact item during the brief window this runs would start a second, concurrent write to the
         // same cutout.png/thumb.png/mask.png files instead of waiting for this one to finish.
         using IDisposable? slot = _coordinator.TryBeginExternalRun(item.Id);
@@ -207,9 +210,9 @@ public partial class ItemsViewModel : ObservableObject
         if (!ok) return;
 
         // Same coordinator registration as MarkCompleteAsync's own -- see TryBeginExternalRun's remarks. This is
-        // the fix for the owner's own report, 2026-10-28: opening SegmentPage for this item right after tapping
-        // "Tách lại nền" used to start a SECOND, concurrent segmentation run (SegmentViewModel's WaitIfRunningAsync
-        // had nothing to find, since this retry used to run completely outside the coordinator).
+        // the fix for the owner's own report, 2026-10-28: opening EditPage for this item right after tapping
+        // "Tách lại nền" used to start a SECOND, concurrent segmentation run (the segment-screen VM's own
+        // WaitIfRunningAsync had nothing to find, since this retry used to run completely outside the coordinator).
         using IDisposable? slot = _coordinator.TryBeginExternalRun(item.Id);
         if (slot == null)
         {

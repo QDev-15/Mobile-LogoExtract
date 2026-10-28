@@ -79,6 +79,11 @@ public sealed record ColorAdjust
 {
     public double Brightness { get; init; } // -1..1
     public double Contrast { get; init; }   // -1..1
+    /// <summary>Saturation/color intensity (merged edit screen, 2026-10-29): -1 = fully gray, 0 = unchanged,
+    /// +1 = oversaturated. Not independent per RGB channel (mixes R/G/B via a luminance weighting), unlike
+    /// Brightness/Contrast/WhiteBalance -- see ColorAdjustFilter.Apply's own remarks for why it is applied as a
+    /// separate second pass instead of folded into the same per-channel LUT.</summary>
+    public double Saturation { get; init; } // -1..1
     /// <summary>Per-channel multiplier from the "pick a neutral point" tool; (1,1,1) = no correction.</summary>
     public (double R, double G, double B) WhiteBalance { get; init; } = (1, 1, 1);
 

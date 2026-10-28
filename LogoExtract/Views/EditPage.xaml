@@ -7,65 +7,77 @@
              x:DataType="vm:EditViewModel"
              Title="Chỉnh sửa">
 
-    <!-- No ScrollView: owner's report, 2026-10-27, "thao tác zoom nó bị lẫn với thao tác scroll". A
-         ScrollView wrapping the whole page competed with PinchGestureRecognizer/PanGestureRecognizer on the
-         preview image for the same touch events. Everything now fits one fixed-height screen instead (header
-         row of controls, the image taking all remaining space, a 4-icon bottom bar), so there is nothing left
-         that needs to scroll. -->
-    <Grid RowDefinitions="Auto,*,Auto" Padding="16,10,16,0" RowSpacing="8">
+    <!-- Merged "tách logo khỏi nền" + "chỉnh sửa" screen (owner's request, 2026-10-29). Header unchanged (plain
+         Shell back + title, same as before). No ScrollView — same reason as before this merge: zoom/pan on the
+         image area fights a ScrollView wrapping the whole page. -->
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="16,10,16,0" RowSpacing="8">
 
-        <!-- Chỉnh màu: compact header (name + a checkmark icon button where "Lưu chỉnh màu" used to be a full-
-             width button) plus the two sliders, right under it. -->
-        <VerticalStackLayout Grid.Row="0" Spacing="2">
-            <Grid ColumnDefinitions="*,Auto">
-                <Label Text="Chỉnh màu" FontAttributes="Bold" FontSize="16" VerticalOptions="Center"
-                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-                <!-- 44x44, not the previous 36x36 (accessibility baseline, consistency pass 2026-10-27).
-                     TextColor is a plain PrimaryDarkText, not the previous hardcoded "White" (which was not
-                     even AppThemeBinding'd — in Dark theme it sat White-on-PrimaryDark at ~1.7:1, nearly
-                     invisible; in Light theme White-on-Primary measures ~2.8:1, also failing WCAG AA). -->
-                <Button Grid.Column="1" Text="{x:Static views:Icons.Check}" FontFamily="{x:Static views:Icons.FontFamily}"
-                        Command="{Binding SaveColorCommand}"
-                        WidthRequest="44" HeightRequest="44" Padding="0" CornerRadius="22" FontSize="18"
-                        BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
-                        TextColor="{StaticResource PrimaryDarkText}" />
-            </Grid>
-            <Grid ColumnDefinitions="72,*" ColumnSpacing="8">
-                <Label Text="Độ sáng" FontSize="12" VerticalOptions="Center"
-                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
-                <Slider Grid.Column="1" Minimum="-1" Maximum="1" Value="{Binding Brightness}" />
-            </Grid>
-            <Grid ColumnDefinitions="72,*" ColumnSpacing="8">
-                <Label Text="Tương phản" FontSize="12" VerticalOptions="Center"
-                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
-                <Slider Grid.Column="1" Minimum="-1" Maximum="1" Value="{Binding Contrast}" />
-            </Grid>
+        <!-- Độ sáng / Tương phản / Độ đậm màu sắc (saturation, new): label ABOVE, slider BELOW (owner's spec —
+             previously label-left/slider-right). Double-tap any label resets that one tool to its default (0) —
+             on the Label, not the Slider itself, so the gesture recognizer never competes with the Slider's own
+             drag handling for the same touch stream (§8 gotcha: never stack competing touch handlers on one
+             element). Sliders/labels disabled while a real segmentation run is in flight (IsBusy) — the one
+             exception to the busy-lock rule is "Chỉnh sửa" below, not these. -->
+        <!-- Owner's report, 2026-10-29: "quá phình to theo chiều cao" -- MAUI's default Slider reserves a tall
+             touch-track box on Android even though the visible track itself is thin; HeightRequest="24" below
+             (was unset, ~40-44dp default) plus tighter Spacing (6/2 -> 2/0) roughly halves this block's total
+             height, matching the owner's explicit "giảm 50%" ask. Label stays tappable at its own natural size
+             for the double-tap-reset gesture -- only the Slider's own box and the stack's spacing shrank. -->
+        <VerticalStackLayout Grid.Row="0" Spacing="0" IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}">
+            <VerticalStackLayout Spacing="0">
+                <Label Text="Độ sáng" FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer NumberOfTapsRequired="2" Command="{Binding ResetBrightnessCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Slider Minimum="-1" Maximum="1" Value="{Binding Brightness}" HeightRequest="24"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            </VerticalStackLayout>
+            <VerticalStackLayout Spacing="0">
+                <Label Text="Tương phản" FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer NumberOfTapsRequired="2" Command="{Binding ResetContrastCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Slider Minimum="-1" Maximum="1" Value="{Binding Contrast}" HeightRequest="24"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            </VerticalStackLayout>
+            <VerticalStackLayout Spacing="0">
+                <Label Text="Độ đậm màu sắc" FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer NumberOfTapsRequired="2" Command="{Binding ResetSaturationCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <Slider Minimum="-1" Maximum="1" Value="{Binding Saturation}" HeightRequest="24"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            </VerticalStackLayout>
         </VerticalStackLayout>
 
-        <!-- Ảnh: fills every pixel left over between the color controls and the bottom bar. Zoom/pan/double-tap
-             are handled inside AdjustablePreviewView's own raw SkiaSharp touch handling, the same technique
-             MaskEditorView already uses (SegmentPage), instead of MAUI's PinchGestureRecognizer / View.Scale and
-             TranslationX/Y, which stayed janky (owner's report, 2026-10-27, "zoom vẫn bị giật lag ... so sánh
-             với các view image ở màn khác ... zoom rất mượt") even after isolating the transform onto its own
-             wrapper Grid. See AdjustablePreviewView's own remarks for the full reasoning. -->
+        <!-- Ảnh: dùng chung cho cả 3 trạng thái (đã tách nền / chưa tách nền-đang chọn vùng / đang tách), kết
+             hợp 2 view ảnh của SegmentPage và EditPage cũ làm một khu vực — 2 control riêng (không viết lại từ
+             đầu, giữ nguyên zoom/pan/double-tap-reset đã chạy đúng ở cả hai), chỉ IsVisible đổi theo
+             IsEditToolbarOpen. AdjustablePreviewView (chỉnh màu, không brush) hiện khi KHÔNG ở brush-edit mode;
+             MaskEditorView (brush thêm/bớt, hoặc tô vùng gốc) hiện khi CÓ. -->
         <Grid Grid.Row="1" Margin="0,4">
-            <!-- Background behind the cutout is drawn BY the view itself (checkerboard by default), not a flat
-                 BackgroundColor (added 2026-10-27, owner's report: a fixed translucent gray hid both near-
-                 white and near-black edge fringing equally well). See AdjustablePreviewView/PreviewBackgroundKind. -->
             <Border StrokeShape="RoundRectangle 12"
-                    Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}">
+                    Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}"
+                    IsVisible="{Binding IsEditToolbarOpen, Converter={StaticResource InvertedBoolConverter}}">
                 <views:AdjustablePreviewView x:Name="PreviewCanvas"
                                              SourceBitmap="{Binding PreviewBitmap}"
-                                             Brightness="{Binding Brightness}" Contrast="{Binding Contrast}" />
+                                             Brightness="{Binding Brightness}" Contrast="{Binding Contrast}" Saturation="{Binding Saturation}" />
             </Border>
 
-            <!-- Cycles the preview's backing (Ô vuông/checkerboard -> Trắng -> Đen -> Xám). Dark translucent chip
-                 (same #CC000000 this app's own SegmentPage region-select hint already uses) so it stays legible
-                 regardless of which backing or image content is currently underneath it. 44x44 floor for the
-                 touch target even though the chip's own content is smaller (accessibility baseline). -->
+            <views:MaskEditorView x:Name="Editor" IsVisible="{Binding IsEditToolbarOpen}" />
+
+            <!-- Cycles the preview's backing (Ô vuông/checkerboard -> Trắng -> Đen -> Xám) — only meaningful
+                 over AdjustablePreviewView's own color-adjust mode. -->
             <Border HorizontalOptions="End" VerticalOptions="Start" Margin="0,10,10,0"
                     MinimumHeightRequest="44" MinimumWidthRequest="44" Padding="12,0"
-                    BackgroundColor="#CC000000" Stroke="Transparent">
+                    BackgroundColor="#CC000000" Stroke="Transparent"
+                    IsVisible="{Binding IsEditToolbarOpen, Converter={StaticResource InvertedBoolConverter}}">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="16" />
                 </Border.StrokeShape>
@@ -76,6 +88,13 @@
                        VerticalOptions="Center" HorizontalOptions="Center" />
             </Border>
 
+            <!-- Region-select hint (relocated from SegmentPage, unchanged). -->
+            <Border IsVisible="{Binding IsSelectingRegion}" VerticalOptions="Start" HorizontalOptions="Center"
+                    Margin="0,16,0,0" Padding="14,8" BackgroundColor="#CC000000" StrokeShape="RoundRectangle 20" Stroke="Transparent">
+                <Label Text="Tô vùng chứa logo rồi bấm Xác nhận" TextColor="White" FontSize="13" />
+            </Border>
+
+            <!-- Spinner cho cả 2 trạng thái "đang tách nền" (lần đầu) và "đang tách theo vùng đã chọn". -->
             <VerticalStackLayout IsVisible="{Binding IsBusy}" VerticalOptions="Center" Spacing="10"
                                  BackgroundColor="#80000000" Padding="20">
                 <ActivityIndicator IsRunning="{Binding IsBusy}" Color="White" />
@@ -83,21 +102,56 @@
             </VerticalStackLayout>
         </Grid>
 
-        <!-- Thanh dưới cùng: Vector hoá / Lưu vào thư viện ảnh / Chia sẻ / Hoàn thành, icon + tên mỗi nút (design
-             pass, 2026-10-27: "các icon ở phần toolbar bottom cần có cả icon và name giống như docscanner"). -->
-        <Grid Grid.Row="2" ColumnDefinitions="*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
-              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
-            <BoxView Grid.ColumnSpan="4" HeightRequest="0.6" VerticalOptions="Start"
-                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
-            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Edit}" Text="Vector hoá" Command="{Binding VectorizeCommand}" />
-            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Save}" Text="Lưu ảnh" Command="{Binding SaveToGalleryCommand}" />
-            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Share}" Text="Chia sẻ" Command="{Binding ExportCommand}" />
-            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Checked}" Text="Hoàn thành" IsActive="True" Command="{Binding FinishCommand}" />
+        <!-- Toolbar PHỤ (popup), CHỒNG LÊN TRÊN toolbar chính bên dưới — không thay thế nó (owner's spec,
+             2026-10-29). Chỉ hiện khi IsEditToolbarOpen. 2 hàng con loại trừ nhau theo IsSelectingRegion, đúng
+             menu cũ của SegmentPage. Thêm/Xoá/Xong khoá khi IsBusy; Chọn vùng/Huỷ/Xác nhận vùng KHÔNG khoá (Chọn
+             vùng là hành động được miễn trừ khỏi busy-lock; Huỷ/Xác nhận vùng chỉ xuất hiện sau khi đã vào
+             region-select, lúc đó IsBusy luôn false). -->
+        <Grid Grid.Row="2" IsVisible="{Binding IsEditToolbarOpen}" RowSpacing="0">
+            <Grid IsVisible="{Binding IsSelectingRegion, Converter={StaticResource InvertedBoolConverter}}"
+                  ColumnDefinitions="*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+                  BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+                <BoxView Grid.ColumnSpan="4" HeightRequest="0.6" VerticalOptions="Start"
+                         Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+                <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Brush}" Text="Thêm" Clicked="OnAddMode"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Remove}" Text="Xoá" Clicked="OnRemoveMode"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.CropFree}" Text="Chọn vùng" Command="{Binding StartRegionSelectCommand}" />
+                <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Checked}" Text="Xong" IsActive="True" Clicked="OnDone"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            </Grid>
+
+            <Grid IsVisible="{Binding IsSelectingRegion}"
+                  ColumnDefinitions="*,*" HeightRequest="68" Padding="0,2,0,10"
+                  BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+                <BoxView Grid.ColumnSpan="2" HeightRequest="0.6" VerticalOptions="Start"
+                         Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+                <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Close}" Text="Huỷ" Clicked="OnCancelRegion" />
+                <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Check}" Text="Xác nhận vùng" IsActive="True" Clicked="OnConfirmRegion" />
+            </Grid>
         </Grid>
 
-        <!-- Confirm/alert dialog overlay (added 2026-10-27) — EditViewModel used 6 separate native
-             DisplayAlert calls before this pass (save-color confirmation, vectorize result/error, storage
-             permission, save-to-gallery result); all now go through this same AppDialog. -->
-        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="3" />
+        <!-- Thanh dưới cùng (chính): + "Chỉnh sửa" (mở toolbar phụ ở trên — LUÔN bật, kể cả khi IsBusy, vì đây
+             là cách duy nhất để vào "Chọn vùng" trong lúc đang tách nền). 4 nút còn lại khoá khi IsBusy; mỗi nút
+             cũng tự lưu Brightness/Contrast/Saturation hiện tại vào store trước khi làm việc của nó (không còn
+             nút tích xanh riêng để lưu chỉnh màu). -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="5" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Tune}" Text="Chỉnh sửa" Command="{Binding OpenEditToolbarCommand}" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Edit}" Text="Vector hoá" Command="{Binding VectorizeCommand}"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Save}" Text="Lưu ảnh" Command="{Binding SaveToGalleryCommand}"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Share}" Text="Chia sẻ" Command="{Binding ExportCommand}"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            <views:ToolButton Grid.Column="4" Icon="{x:Static views:Icons.Checked}" Text="Hoàn thành" IsActive="True" Command="{Binding FinishCommand}"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+        </Grid>
+
+        <!-- Confirm/alert dialog overlay — spans every row so it sits above both toolbars too. -->
+        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="4" />
     </Grid>
 </ContentPage>

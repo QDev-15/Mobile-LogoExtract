@@ -12,9 +12,10 @@ namespace LogoExtract.Services;
 /// status đang tách [nền]" -- before this, nothing ever ran segmentation until the user opened SegmentPage for
 /// that specific item, so Home's "Đang tách nền" badge on a freshly-imported item was a lie the whole time it
 /// sat there unopened. ImportViewModel now calls <see cref="EnqueueIfNeeded"/> right after creating each item;
-/// this makes the label true. SegmentViewModel calls <see cref="WaitIfRunningAsync"/> before starting its own
-/// run so opening the item early (while its background run is still queued/in flight) awaits THAT result
-/// instead of paying for a second, redundant ONNX call on the same photo.</summary>
+/// this makes the label true. EditViewModel (the merged segment+edit screen, 2026-10-29 -- formerly
+/// SegmentViewModel's own call) calls <see cref="WaitIfRunningAsync"/> before starting its own run so opening
+/// the item early (while its background run is still queued/in flight) awaits THAT result instead of paying
+/// for a second, redundant ONNX call on the same photo.</summary>
 public sealed class SegmentationCoordinator
 {
     private readonly ItemStore _store;
@@ -53,7 +54,7 @@ public sealed class SegmentationCoordinator
         _queue.Writer.TryWrite(itemId);
     }
 
-    /// <summary>Lets a caller that's about to segment this same item itself (SegmentViewModel, opening the page
+    /// <summary>Lets a caller that's about to segment this same item itself (EditViewModel, opening the page
     /// early) wait for an already-queued/in-flight background run instead of starting a wasteful second ONNX
     /// call on the same photo. Returns false immediately if nothing is queued/running for this id (the normal
     /// case once the queue has drained, or for an item that predates this feature).</summary>
@@ -130,7 +131,7 @@ public sealed class SegmentationCoordinator
     /// <summary>True if the item ended up segmented (or didn't need to be -- deleted, or already handled by
     /// someone else, e.g. the owner's own "Đánh dấu hoàn thành" dashboard override winning the race against this
     /// queue entry); false on a real failure/timeout, left at <see cref="ItemState.Imported"/> same as before --
-    /// SegmentPage's own auto-run (with full user-facing retry/alert handling) or Home's manual override are
+    /// EditPage's own auto-run (with full user-facing retry/alert handling) or Home's manual override are
     /// still there as a way forward.</summary>
     private async Task<bool> RunOneAsync(string itemId)
     {
@@ -161,7 +162,7 @@ public sealed class SegmentationCoordinator
         try
         {
             using SKBitmap mask = result.Mask!;
-            // Re-check: SegmentViewModel may have taken over this exact item (user opened it) and already saved
+            // Re-check: EditViewModel may have taken over this exact item (user opened it) and already saved
             // its own result while this queue entry was waiting its turn -- that result is simply stale, not
             // wrong; discard rather than overwrite a newer save.
             if (_store.Get(itemId)?.State != ItemState.Imported) return true;

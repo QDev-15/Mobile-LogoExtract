@@ -4,8 +4,9 @@ namespace LogoExtract.Services;
 
 /// <summary>Owner's report, 2026-10-28: "không đồng nhất quản lý". This exact
 /// Task.Run+BackgroundPriority+timeout-race+late-fault-observer shape used to be copy-pasted, with small
-/// unexplained differences, into SegmentationCoordinator.RunOneAsync, SegmentViewModel.RunAutoSegmentAsync,
-/// SegmentViewModel.ConfirmRegionSelectAsync and ItemsViewModel.RetrySegmentationAsync -- including one real bug
+/// unexplained differences, into SegmentationCoordinator.RunOneAsync, EditViewModel.RunAutoSegmentAsync,
+/// EditViewModel.ConfirmRegionSelectAsync and ItemsViewModel.RetrySegmentationAsync (EditViewModel absorbed the
+/// former SegmentViewModel's two call sites when the segment+edit screens merged, 2026-10-29) -- including one real bug
 /// only one of the four copies had (ItemsViewModel disposed its source image immediately on timeout, while a
 /// background thread could still be reading it; SegmentationCoordinator's copy knew to wait). One shared
 /// implementation means that kind of drift can't happen again, and a future fix (e.g. a different timeout

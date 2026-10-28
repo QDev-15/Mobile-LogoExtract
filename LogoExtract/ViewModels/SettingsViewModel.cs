@@ -8,7 +8,7 @@ namespace LogoExtract.ViewModels;
 /// <summary>SettingsPage's view model. Thin by design -- LogoExtract has no Pro tier / IAP and no theme or
 /// language picker (unlike the sibling PdfReader/Minesweeper apps), so there is nothing to persist here yet;
 /// this only exists so SettingsPage follows the same real-ViewModel-with-[RelayCommand] convention as every
-/// other page in this app (ItemsViewModel, ImportViewModel, SegmentViewModel, EditViewModel), rather than
+/// other page in this app (ItemsViewModel, ImportViewModel, EditViewModel), rather than
 /// PdfReader's/Minesweeper's own plain-code-behind Settings pages.</summary>
 public partial class SettingsViewModel : ObservableObject
 {

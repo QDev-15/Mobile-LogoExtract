@@ -36,7 +36,32 @@ public static class ColorAdjustFilter
             dst[i + 2] = lutB[src[i + 2]];
             dst[i + 3] = src[i + 3]; // alpha untouched
         }
+
+        // Saturation is NOT independent per channel (it mixes R/G/B via a luminance weighting), unlike
+        // Brightness/Contrast/WhiteBalance above, so it cannot be folded into the same per-channel LUT -- applied
+        // here as a second Span-based pass over the already brightness/contrast-adjusted `result` (merged edit
+        // screen, 2026-10-29). Skipped entirely when 0 (the common case -- most items never touch this slider).
+        if (adjust.Saturation != 0) ApplySaturation(dstPx, adjust.Saturation);
         return result;
+    }
+
+    /// <summary>Mixes each pixel toward (Saturation&lt;0) or away from (Saturation&gt;0) its own luma, using the
+    /// same 0.3086/0.6094/0.0820 R/G/B weights LogoExtract.Views.AdjustablePreviewView's live-preview saturation
+    /// color matrix uses, so the full-resolution export and the on-screen preview agree. Span-based (no
+    /// GetPixel/SetPixel), consistent with the rest of this file.</summary>
+    private static void ApplySaturation(SKPixmap pixmap, double saturation)
+    {
+        double satFactor = 1 + saturation; // -1 = fully gray, 0 = unchanged, +1 = oversaturated
+        Span<byte> span = pixmap.GetPixelSpan();
+        for (int i = 0; i + 3 < span.Length; i += 4)
+        {
+            byte r = span[i], g = span[i + 1], b = span[i + 2];
+            double gray = 0.3086 * r + 0.6094 * g + 0.0820 * b;
+            span[i] = Clamp(gray + (r - gray) * satFactor);
+            span[i + 1] = Clamp(gray + (g - gray) * satFactor);
+            span[i + 2] = Clamp(gray + (b - gray) * satFactor);
+            // span[i + 3] (alpha) untouched
+        }
     }
 
     private static byte[] BuildLut(double whiteBalanceMultiplier, double brightness, double contrast)

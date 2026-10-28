@@ -1,15 +1,18 @@
 using LogoExtract.Services;
 using LogoExtract.ViewModels;
+using SkiaSharp;
 
 namespace LogoExtract.Views;
 
+/// <summary>Merged "tách logo khỏi nền" + "chỉnh sửa" screen (owner's request, 2026-10-29) -- the former
+/// SegmentPage's code-behind (Editor wiring, brush-mode/region-select button handlers) is relocated into here
+/// near-verbatim; SegmentPage/SegmentViewModel are deleted.</summary>
 public partial class EditPage : ContentPage
 {
     private readonly EditViewModel _vm;
     private readonly AppDialog _dialog;
 
-    // Cycle order/labels for the preview-background chip (added 2026-10-27). Checkerboard first: the universal
-    // "this is transparency" convention, and the most useful default for judging a cutout's own edges.
+    // Cycle order/labels for the preview-background chip (unchanged from before this merge).
     private static readonly (PreviewBackgroundKind Kind, string Label)[] PreviewBackgrounds =
     [
         (PreviewBackgroundKind.Checkerboard, "Ô vuông"),
@@ -24,6 +27,11 @@ public partial class EditPage : ContentPage
         InitializeComponent();
         BindingContext = _vm = vm;
         _dialog = dialog;
+        // Same wiring SegmentPage used to have: pushes _image/_mask into MaskEditorView every time the VM
+        // publishes a new pair (first load, region-select start/cancel/confirm), regardless of whether the
+        // brush sub-toolbar is visible right now -- so Editor is already showing the right thing the moment the
+        // user taps "Chỉnh sửa".
+        _vm.ImagesReady += (image, mask) => MainThread.BeginInvokeOnMainThread(() => Editor.Load(image, mask));
     }
 
     protected override void OnDisappearing()
@@ -32,14 +40,34 @@ public partial class EditPage : ContentPage
         _vm.Unload();
     }
 
-    // Same rationale as ImportPage's own override: an open AppDialog (save-color confirmation, vectorize
-    // result, storage permission, save-to-gallery result) must close first on Back, not get swept away by the
-    // page itself popping out from under it. Added 2026-10-27 alongside AppDialogOverlay.
+    // Same rationale as before this merge: an open AppDialog (segmentation failure, vectorize result/error,
+    // storage permission, save-to-gallery result) must close first on Back, not get swept away by the page
+    // itself popping out from under it.
     protected override bool OnBackButtonPressed() => _dialog.Dismiss() || base.OnBackButtonPressed();
 
-    // Local UI-only state (not persisted, not ViewModel-bound) -- same shape as SegmentPage's own
-    // OnAddMode/OnRemoveMode brush-mode toggling, which is also plain code-behind talking directly to its own
-    // Skia view rather than round-tripping through a ViewModel property for something this transient.
+    // Relocated from SegmentPage.xaml.cs, unchanged -- plain code-behind talking directly to Editor (a
+    // ViewModel RelayCommand can't reach MaskEditorView's own SetMode/CurrentMask without the ViewModel holding
+    // a reference to the View).
+    private void OnAddMode(object? sender, EventArgs e) => Editor.SetMode(MaskEditorView.BrushMode.Add);
+    private void OnRemoveMode(object? sender, EventArgs e) => Editor.SetMode(MaskEditorView.BrushMode.Remove);
+
+    private async void OnDone(object? sender, EventArgs e)
+    {
+        SKBitmap? mask = Editor.CurrentMask;
+        if (mask == null) return;
+        await _vm.SaveMaskAsync(mask);
+    }
+
+    private void OnCancelRegion(object? sender, EventArgs e) => _vm.CancelRegionSelect();
+
+    private async void OnConfirmRegion(object? sender, EventArgs e)
+    {
+        SKBitmap? selection = Editor.CurrentMask;
+        if (selection == null) return;
+        await _vm.ConfirmRegionSelectAsync(selection);
+    }
+
+    // Local UI-only state (not persisted, not ViewModel-bound) -- same shape as OnAddMode/OnRemoveMode above.
     private void OnCyclePreviewBackground(object? sender, TappedEventArgs e)
     {
         _previewBgIndex = (_previewBgIndex + 1) % PreviewBackgrounds.Length;

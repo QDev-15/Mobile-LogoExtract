@@ -6,7 +6,8 @@ namespace LogoExtract.Views;
 /// background, the whole cell tappable. Same control as DocScanner's own Views/ToolButton.cs, ported verbatim
 /// (just retargeted at LogoExtract's own Primary/TextSecondary palette) per the owner's request, 2026-10-27:
 /// "các icon ở phần toolbar bottom cần có cả icon và name giống như docscanner" -- every bottom toolbar in this
-/// app (SegmentPage, EditPage) used icon-only buttons before this; <see cref="IsActive"/> tints it with the
+/// app (the former SegmentPage, EditPage -- merged into one screen, 2026-10-29) used icon-only buttons before
+/// this; <see cref="IsActive"/> tints it with the
 /// brand color for a toggled-on tool, a disabled button fades out and ignores taps.</summary>
 public class ToolButton : ContentView
 {
@@ -29,9 +30,9 @@ public class ToolButton : ContentView
         BindableProperty.Create(nameof(IconSize), typeof(double), typeof(ToolButton), 24.0, propertyChanged: (b, _, v) => ((ToolButton)b)._icon.FontSize = (double)v);
 
     /// <summary>Fires alongside Command (same dual Command+Clicked shape as a plain MAUI Button) for callers that
-    /// need code-behind, not a bindable ICommand -- e.g. SegmentPage's "Thêm"/"Xoá" set brush mode directly on
-    /// its MaskEditorView, and "Xong"/"Huỷ"/"Xác nhận vùng" need that same view's CurrentMask, neither of which a
-    /// plain ViewModel RelayCommand can reach without the ViewModel holding a reference to the View.</summary>
+    /// need code-behind, not a bindable ICommand -- e.g. EditPage's brush sub-toolbar "Thêm"/"Xoá" set brush
+    /// mode directly on its MaskEditorView, and "Xong"/"Huỷ"/"Xác nhận vùng" need that same view's CurrentMask,
+    /// neither of which a plain ViewModel RelayCommand can reach without the ViewModel holding a reference to the View.</summary>
     public event EventHandler? Clicked;
 
     private readonly Label _icon;

@@ -40,10 +40,11 @@ public static class MauiProgram
 		// the ONNX Runtime session graph is real I/O + CPU work (found on a real device, 2026-10-27: the whole
 		// UI froze on first opening the segment screen, well past a minute, no ANR because nothing was waiting
 		// on input at the time). A Singleton factory runs the FIRST time anything resolves this service, which
-		// for SegmentViewModel's own constructor injection is Shell's own page-construction step during
-		// navigation -- on the UI thread, before SegmentViewModel.LoadAsync's own Task.Run ever gets a chance to
-		// push it off that thread. Lazy<T> defers the actual work to the first .Value access, which
-		// SegmentViewModel now makes from inside its own Task.Run instead of the constructor.
+		// for EditViewModel's own constructor injection (merged segment+edit screen, 2026-10-29 -- formerly
+		// SegmentViewModel's) is Shell's own page-construction step during navigation -- on the UI thread,
+		// before EditViewModel.LoadAsync's own Task.Run ever gets a chance to push it off that thread. Lazy<T>
+		// defers the actual work to the first .Value access, which EditViewModel now makes from inside its own
+		// Task.Run instead of the constructor.
 		builder.Services.AddSingleton(_ => new Lazy<ISegmentationService>(() =>
 		{
 			// Console.WriteLine does NOT reach logcat on this Release build (confirmed on-device, 2026-10-27:
@@ -66,18 +67,19 @@ public static class MauiProgram
 
 		// Singleton: its own background worker loop must outlive any one page (ImportViewModel enqueues a
 		// background segmentation run and immediately navigates away; the run has to keep going after that
-		// transient ViewModel is gone), and ItemsViewModel/SegmentViewModel both need to observe/await the SAME
-		// in-flight queue, not each get their own.
+		// transient ViewModel is gone), and ItemsViewModel/EditViewModel (merged segment+edit screen,
+		// 2026-10-29) both need to observe/await the SAME in-flight queue, not each get their own.
 		builder.Services.AddSingleton<SegmentationCoordinator>();
 
 		builder.Services.AddTransient<ItemsViewModel>();
 		builder.Services.AddTransient<ImportViewModel>();
-		builder.Services.AddTransient<SegmentViewModel>();
+		// SegmentViewModel/SegmentPage retired (merged into EditViewModel/EditPage, 2026-10-29) -- EditViewModel
+		// now takes the same services SegmentViewModel used to (Lazy<ISegmentationService>, SegmentationCoordinator)
+		// alongside what it already took (ItemStore, AppDialog).
 		builder.Services.AddTransient<EditViewModel>();
 		builder.Services.AddTransient<SettingsViewModel>();
 		builder.Services.AddTransient<HomePage>();
 		builder.Services.AddTransient<ImportPage>();
-		builder.Services.AddTransient<SegmentPage>();
 		builder.Services.AddTransient<EditPage>();
 		builder.Services.AddTransient<SettingsPage>();
 		// AboutPage/PrivacyPolicyPage have no ViewModel (plain static/display pages, same shape as PdfReader's

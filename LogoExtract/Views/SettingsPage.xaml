@@ -9,7 +9,7 @@
              BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
 
     <!-- No custom back-arrow header and no Shell.NavBarIsVisible="False" here, this app's own non-root pages
-         (ImportPage, SegmentPage, EditPage) all rely on AppShell's default native Shell nav bar for Back +
+         (ImportPage, EditPage) all rely on AppShell's default native Shell nav bar for Back +
          Title instead of hand-rolling one (only HomePage, the Shell root, overrides it). Settings/About/Privacy
          follow that same in-app convention rather than PdfReader/Minesweeper's hand-rolled header, which is why
          no ArrowBack glyph was added to Icons.cs for this pass. No AppDialogOverlay/ad banner either: this

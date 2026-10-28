@@ -62,17 +62,19 @@ public sealed class MaskEditorView : SKCanvasView
     /// view was previously showing (a view can be reused across items via dependency-injected transient pages
     /// in some navigation patterns; without this, re-opening the segment screen leaked the previous item's
     /// bitmaps) before adopting the new ones. This is the ONLY place <see cref="_image"/>/<see cref="_mask"/>
-    /// get disposed, deliberately: there is no separate Unload() that disposes them from SegmentPage's
-    /// OnDisappearing anymore. They are the SAME SKBitmap objects SegmentViewModel keeps in its own fields
-    /// (handed over by reference, never copied), so a page-level Unload() used to dispose them on EVERY
-    /// disappear, including the ordinary forward navigation to EditPage, leaving SegmentViewModel holding
+    /// get disposed, deliberately: there is no separate Unload() that disposes them from the page's own
+    /// OnDisappearing. They are the SAME SKBitmap objects EditViewModel keeps in its own fields (handed over by
+    /// reference, never copied -- formerly SegmentViewModel's fields, before the segment+edit screens merged
+    /// into one page, 2026-10-29), so a page-level Unload() used to dispose them on EVERY disappear, including
+    /// the ordinary forward navigation from the old SegmentPage to the old EditPage, leaving that VM holding
     /// disposed-but-non-null references the moment the user came back and tapped "Chọn vùng và tách lại". Owner's
     /// report, 2026-10-27: a SIGSEGV crash in libSkiaSharp.so's sk_bitmap_get_info, from StartRegionSelect
     /// reading _image.Width/.Height on exactly that freed bitmap. Disposal ownership now belongs entirely to
-    /// SegmentViewModel/this method's own replace-on-reload logic.</summary>
+    /// EditViewModel/this method's own replace-on-reload logic.</summary>
     public void Load(SKBitmap image, SKBitmap mask)
     {
-        // ReferenceEquals check: SegmentViewModel's region-select flow (2026-10-27) calls Load() a second/third
+        // ReferenceEquals check: EditViewModel's region-select flow (2026-10-27, relocated from the former
+        // SegmentViewModel 2026-10-29) calls Load() a second/third
         // time for the SAME item with the SAME original-photo SKBitmap instance (only the mask changes). Without
         // this guard, `_image?.Dispose()` would dispose the very object the `image` parameter also points to,
         // then `_image = image` would adopt an already-disposed bitmap -- first paint after that throws
