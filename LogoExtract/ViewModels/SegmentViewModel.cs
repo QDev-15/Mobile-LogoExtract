@@ -50,7 +50,7 @@ public partial class SegmentViewModel : ObservableObject
     private string itemId = "";
 
     [ObservableProperty]
-    private bool isBusy = true;
+    private bool isBusy = false;
 
     [ObservableProperty]
     private string busyText = "Đang tách nền...";
