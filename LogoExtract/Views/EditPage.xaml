@@ -18,11 +18,11 @@
              drag handling for the same touch stream (§8 gotcha: never stack competing touch handlers on one
              element). Sliders/labels disabled while a real segmentation run is in flight (IsBusy) — the one
              exception to the busy-lock rule is "Chỉnh sửa" below, not these. -->
-        <!-- Owner's report, 2026-10-29: "quá phình to theo chiều cao" -- MAUI's default Slider reserves a tall
+        <!-- Owner's report, 2026-10-29: "quá phình to theo chiều cao" — MAUI's default Slider reserves a tall
              touch-track box on Android even though the visible track itself is thin; HeightRequest="24" below
              (was unset, ~40-44dp default) plus tighter Spacing (6/2 -> 2/0) roughly halves this block's total
              height, matching the owner's explicit "giảm 50%" ask. Label stays tappable at its own natural size
-             for the double-tap-reset gesture -- only the Slider's own box and the stack's spacing shrank. -->
+             for the double-tap-reset gesture — only the Slider's own box and the stack's spacing shrank. -->
         <VerticalStackLayout Grid.Row="0" Spacing="0" IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}">
             <VerticalStackLayout Spacing="0">
                 <Label Text="Độ sáng" FontSize="12"
