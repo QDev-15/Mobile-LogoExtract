@@ -49,6 +49,11 @@ public partial class SegmentViewModel : ObservableObject
     [ObservableProperty]
     private string itemId = "";
 
+    // Not a safety net -- a stuck default (whichever value) only hides a real bug behind a different-looking
+    // symptom (spinner-forever instead of blank-forever), it does not prevent one. The actual guarantee is that
+    // LoadAsync (and RunAutoSegmentAsync/ConfirmRegionSelectAsync) set this explicitly on every exit path, so
+    // this default is only ever visible for the instant between construction and LoadAsync's own first
+    // (synchronous, pre-await) assignment -- "not busy yet" is the honest value for that instant.
     [ObservableProperty]
     private bool isBusy = false;
 
@@ -76,13 +81,32 @@ public partial class SegmentViewModel : ObservableObject
         Android.Util.Log.Info("LogoExtractPerf", $"[Load] LoadAsync start, ItemId='{ItemId}'");
         LogoItem? item = _store.Get(ItemId);
         Android.Util.Log.Info("LogoExtractPerf", $"[Load] _store.Get returned: {(item == null ? "NULL" : item.Id)}");
-        if (item == null) return;
+        if (item == null)
+        {
+            // Owner's report, 2026-10-28: a review question ("trang này vừa vào phải check trạng thái...")
+            // surfaced this gap too -- a silent `return` here left IsBusy/the_image untouched, i.e. whatever the
+            // page happened to start as (black, nothing responding) with zero feedback. Only reachable if the
+            // item was deleted between the Home tap and this running (e.g. a race with Delete), but "item is
+            // gone" must still end in a dialog + navigating back, never a silently broken page.
+            Android.Util.Log.Error("LogoExtractPerf", $"[Load] item not found for ItemId='{ItemId}' -- probably deleted");
+            await _dialog.AlertAsync("Lỗi", "Không tìm thấy mục này.");
+            await Shell.Current.GoToAsync("..");
+            return;
+        }
         _item = item;
         string folder = _store.ItemFolder(item.Id);
         string path = Path.Combine(folder, item.OriginalFile);
         string maskPath = Path.Combine(folder, "mask.png");
 
-        IsBusy = true;
+        // Check the item's status FIRST, before touching IsBusy at all (owner's own framing, 2026-10-28: "nếu
+        // đang tách nền thì mới hiển thị IsBusy còn không thì chỉ hiển thị ảnh đã tách nền"). An item that
+        // already has a cutout has nothing running and nothing to wait for -- it must never flash a busy/"Đang
+        // tách nền..." state for work that isn't actually happening; it only has to decode and show what's
+        // already on disk. Only a genuinely not-yet-segmented item (Imported -- freshly imported with
+        // SegmentationCoordinator's background run still queued/in flight, or no background run at all) goes
+        // busy and possibly runs/waits for real segmentation below.
+        bool alreadySegmented = item.CutoutFile != null;
+        IsBusy = !alreadySegmented;
         BusyText = "Đang tách nền...";
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -97,36 +121,36 @@ public partial class SegmentViewModel : ObservableObject
             Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
             _image = image;
 
-            // A background run from import time (SegmentationCoordinator) may already be queued/running for
-            // this exact item -- opening the page early must wait for THAT result instead of paying for a
-            // second, redundant ONNX call on the same photo. No-ops (returns false immediately) once the queue
-            // has drained, which is the common case for anything the owner didn't open within a few seconds of
-            // importing it.
-            if (item.CutoutFile == null && await _coordinator.WaitIfRunningAsync(item.Id))
+            if (alreadySegmented && await TryLoadSavedMaskAsync(image, maskPath))
+            {
+                Android.Util.Log.Info("LogoExtractPerf", "[Load] already segmented, loaded saved mask directly -- no segmentation run");
+                return;
+            }
+            if (alreadySegmented)
+            {
+                // CutoutFile was set but mask.png turned out missing/unreadable (deleted/corrupted externally,
+                // not the common case -- found in review, not observed on-device). This genuinely does need a
+                // fresh run after all, so flip into the busy state now instead of leaving the page looking idle
+                // while real work happens below.
+                Android.Util.Log.Error("LogoExtractPerf", $"[Load] CutoutFile set but mask.png unusable at {maskPath} -- running fresh");
+                IsBusy = true;
+            }
+
+            // Not segmented (or just found to need a fresh run above). A background run from import time
+            // (SegmentationCoordinator) may already be queued/running for this exact item -- wait for THAT
+            // instead of paying for a second, redundant ONNX call on the same photo. No-ops (returns false
+            // immediately) once the queue has drained, the common case for anything opened more than a few
+            // seconds after importing it.
+            if (await _coordinator.WaitIfRunningAsync(item.Id))
             {
                 item = _store.Get(ItemId) ?? item;
                 _item = item;
-            }
-
-            if (item.CutoutFile != null)
-            {
-                sw.Restart();
-                // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it
-                // does not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. If
-                // that file is missing or unreadable despite CutoutFile being set (deleted/corrupted externally),
-                // fall through to running segmentation fresh rather than handing the editor a null mask (silent dead
-                // screen -- the original bug here, found in review, not observed on-device).
-                // Forced to Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing
-                // below reads this mask's bytes directly assuming that exact channel order.
-                SKBitmap? savedMask = await Task.Run(() => BitmapIO.DecodeAsRgba8888(maskPath));
-                Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms");
-                if (savedMask != null)
+                if (item.CutoutFile != null && await TryLoadSavedMaskAsync(image, maskPath))
                 {
-                    _mask = savedMask;
-                    IsBusy = false;
-                    ImagesReady?.Invoke(image, savedMask);
+                    Android.Util.Log.Info("LogoExtractPerf", "[Load] background segmentation finished while waiting, loaded its result");
                     return;
                 }
+                Android.Util.Log.Error("LogoExtractPerf", "[Load] background run finished but left no usable mask -- running fresh");
             }
         }
         catch (Exception ex)
@@ -143,6 +167,27 @@ public partial class SegmentViewModel : ObservableObject
         // ConfirmRegionSelectAsync fallback below) commits straight away instead of waiting for the user to
         // review and tap "Xong". "Chọn vùng" is still fully available to interrupt this BEFORE it finishes.
         await RunAutoSegmentAsync(autoSaveOnSuccess: true);
+    }
+
+    /// <summary>Tries to load an already-saved mask.png for the freshly-decoded <paramref name="image"/> and, if
+    /// found, publishes it and clears IsBusy -- returns false (leaving IsBusy/state untouched) if the file is
+    /// missing or unreadable, so callers can fall through to a fresh segmentation run instead of handing the
+    /// editor a null mask (silent dead screen -- the original bug here, found in review, not observed
+    /// on-device).</summary>
+    private async Task<bool> TryLoadSavedMaskAsync(SKBitmap image, string maskPath)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        // A previously-saved mask.png is already in the image's own (already-oriented) pixel space, so it does
+        // not need -- and must not get -- EXIF handling again; only re-decode as a plain bitmap. Forced to
+        // Rgba8888 for the same reason as ExifOrientation.DecodeOriented: SaveAsync's compositing below reads
+        // this mask's bytes directly assuming that exact channel order.
+        SKBitmap? savedMask = await Task.Run(() => BitmapIO.DecodeAsRgba8888(maskPath));
+        Android.Util.Log.Info("LogoExtractPerf", $"[Load] savedMask check: {sw.ElapsedMilliseconds}ms, found={savedMask != null}");
+        if (savedMask == null) return false;
+        _mask = savedMask;
+        IsBusy = false;
+        ImagesReady?.Invoke(image, savedMask);
+        return true;
     }
 
     /// <summary>Runs (or re-runs) auto-segmentation on the already-decoded <see cref="_image"/> and publishes the
