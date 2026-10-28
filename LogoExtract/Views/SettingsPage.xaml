@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+             xmlns:views="clr-namespace:LogoExtract.Views"
+             x:Class="LogoExtract.Views.SettingsPage"
+             x:DataType="vm:SettingsViewModel"
+             Title="Cài đặt"
+             BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
+
+    <!-- No custom back-arrow header and no Shell.NavBarIsVisible="False" here, this app's own non-root pages
+         (ImportPage, SegmentPage, EditPage) all rely on AppShell's default native Shell nav bar for Back +
+         Title instead of hand-rolling one (only HomePage, the Shell root, overrides it). Settings/About/Privacy
+         follow that same in-app convention rather than PdfReader/Minesweeper's hand-rolled header, which is why
+         no ArrowBack glyph was added to Icons.cs for this pass. No AppDialogOverlay/ad banner either: this
+         page has no action that needs a confirm dialog, and this app only places its ad banner on HomePage
+         (Import/Segment/Edit carry none either), so Settings stays consistent with that, not PdfReader's
+         every-page-has-a-banner convention. -->
+    <ContentPage.Resources>
+        <Style x:Key="Section" TargetType="Label">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontFamily" Value="OpenSansSemibold" />
+            <Setter Property="Margin" Value="20,18,20,8" />
+            <!-- Tertiary in Light theme, not Primary, same reasoning as every other brand-colored foreground
+                 text in this app (Primary-on-light-surface measures ~2.6-2.8:1, under the 3:1/4.5:1 WCAG
+                 floors at this hue's luminance; see Colors.xaml's Tertiary remarks). -->
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="Margin" Value="16,0" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        </Style>
+        <Style x:Key="RowName" TargetType="Label">
+            <Setter Property="FontSize" Value="14.5" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        </Style>
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="0,16,0,24">
+
+            <Label Text="ỨNG DỤNG" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <!-- Minesweeper's own "ỨNG DỤNG" row pattern: no leading icon, name + trailing chevron. -->
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="44" Padding="0,10">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenAboutCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Thông tin ứng dụng" Style="{StaticResource RowName}" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.ChevronRight}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
+                               VerticalOptions="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                    </Grid>
+                    <BoxView HeightRequest="0.6" Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="44" Padding="0,10">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenPrivacyPolicyCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Chính sách quyền riêng tư" Style="{StaticResource RowName}" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.ChevronRight}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
+                               VerticalOptions="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="{Binding VersionText}" FontSize="12" Margin="0,22,0,0" HorizontalOptions="Center"
+                   TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

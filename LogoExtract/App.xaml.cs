@@ -16,6 +16,9 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new AppShell());
+		// The start screen first; it builds the real shell (AppShell) while it animates, then hands over --
+		// see Views/SplashPage.xaml.cs. Same technique as the sibling PdfReader/DocScanner repos (added
+		// 2026-10-28, this app didn't have this second in-app splash layer before).
+		return new Window(new Views.SplashPage(() => new AppShell()));
 	}
 }

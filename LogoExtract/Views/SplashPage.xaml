@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="LogoExtract.Views.SplashPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Shell.NavBarIsVisible="False"
+    BackgroundColor="#392A24">
+
+    <Grid RowDefinitions="*,Auto,*,Auto">
+        <Grid.Background>
+            <!-- Starts at the exact same color as the native system splash (MauiSplashScreen's Color, see
+                 LogoExtract.csproj) so the handover from the native splash to this page has no visible color
+                 jump, same technique as PdfReader/DocScanner's own SplashPage. The new dark-brown gradient
+                 matches the icon-replacement pass's new icon identity (same two stops as appicon.svg's own
+                 background), not this app's old mint gradient. -->
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#46352E" Offset="0" />
+                <GradientStop Color="#392A24" Offset="0.45" />
+                <GradientStop Color="#2C201B" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="14" HorizontalOptions="Center">
+            <Image x:Name="Mark" Source="splash_mark.svg" WidthRequest="140" HeightRequest="140" Opacity="0" Scale="0.7" />
+            <Label x:Name="AppName" Text="Logo Extract" FontSize="30" FontFamily="OpenSansSemibold"
+                   TextColor="{StaticResource White}" HorizontalOptions="Center" />
+            <Label x:Name="Tagline" Text="Tách logo khỏi áo, làm sạch và vector hoá ngay trên điện thoại."
+                   FontSize="14" TextColor="{StaticResource Secondary}" HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center" Padding="40,0" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="3" Spacing="4" Padding="0,0,0,36" HorizontalOptions="Center">
+            <ActivityIndicator IsRunning="True" Color="{StaticResource PrimaryDark}" WidthRequest="22" HeightRequest="22" Margin="0,0,0,10" />
+            <Label x:Name="AuthorLabel" Text="Tác giả: Nguyễn Hữu Quỳnh" FontSize="12"
+                   TextColor="{StaticResource TextSecondaryDark}" HorizontalOptions="Center" />
+            <Label x:Name="VersionLabel" FontSize="12" TextColor="{StaticResource TextSecondaryDark}" HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

@@ -18,6 +18,7 @@ public partial class SegmentViewModel : ObservableObject
     // registration): first access builds the ONNX Runtime session, real I/O + CPU work that must never run on
     // the UI thread during page construction/navigation.
     private readonly Lazy<ISegmentationService> _segmentation;
+    private readonly SegmentationCoordinator _coordinator;
     private LogoItem? _item;
     private SKBitmap? _image;
     private SKBitmap? _mask;
@@ -37,11 +38,12 @@ public partial class SegmentViewModel : ObservableObject
     // unobserved-exception crash) and the user gets an alert with a real way forward (retry, or "Chọn vùng").
     private static readonly TimeSpan SegmentTimeout = TimeSpan.FromSeconds(30);
 
-    public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog)
+    public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog, SegmentationCoordinator coordinator)
     {
         _store = store;
         _segmentation = segmentation;
         _dialog = dialog;
+        _coordinator = coordinator;
     }
 
     [ObservableProperty]
@@ -94,6 +96,17 @@ public partial class SegmentViewModel : ObservableObject
             SKBitmap image = await Task.Run(() => ExifOrientation.DecodeOriented(path));
             Android.Util.Log.Info("LogoExtractPerf", $"[Load] DecodeOriented: {sw.ElapsedMilliseconds}ms");
             _image = image;
+
+            // A background run from import time (SegmentationCoordinator) may already be queued/running for
+            // this exact item -- opening the page early must wait for THAT result instead of paying for a
+            // second, redundant ONNX call on the same photo. No-ops (returns false immediately) once the queue
+            // has drained, which is the common case for anything the owner didn't open within a few seconds of
+            // importing it.
+            if (item.CutoutFile == null && await _coordinator.WaitIfRunningAsync(item.Id))
+            {
+                item = _store.Get(ItemId) ?? item;
+                _item = item;
+            }
 
             if (item.CutoutFile != null)
             {
@@ -189,13 +202,22 @@ public partial class SegmentViewModel : ObservableObject
             return;
         }
         _mask = mask;
+        // Hand the mask to the Editor control the moment it exists, even on the autoSaveOnSuccess path that's
+        // about to navigate straight to EditPage: without this, a FRESH item's first auto-segment+autosave
+        // (the common case -- every newly imported photo takes exactly this path) never called Editor.Load() at
+        // all, so MaskEditorView's own _image/_tintedOverlay stayed null. Owner's report, 2026-10-28: save on
+        // SegmentPage -> go to EditPage -> back -> SegmentPage's view is solid black -- that's
+        // MaskEditorView.OnPaintSurface's null-guard clearing to black, because nothing had ever loaded it.
+        // Safe to call unconditionally here (no double-dispose): Editor.Load's own ReferenceEquals(image) guard
+        // already handles being called again later with the same _image, and this is the one and only call for
+        // the autoSaveOnSuccess path.
+        ImagesReady?.Invoke(image, mask);
         if (autoSaveOnSuccess)
         {
             await SaveAsync(mask);
             return;
         }
         IsBusy = false;
-        ImagesReady?.Invoke(image, mask);
     }
 
     [RelayCommand]

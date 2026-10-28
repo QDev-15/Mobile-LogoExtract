@@ -11,11 +11,13 @@ public partial class ImportViewModel : ObservableObject
 {
     private readonly ItemStore _store;
     private readonly AppDialog _dialog;
+    private readonly SegmentationCoordinator _coordinator;
 
-    public ImportViewModel(ItemStore store, AppDialog dialog)
+    public ImportViewModel(ItemStore store, AppDialog dialog, SegmentationCoordinator coordinator)
     {
         _store = store;
         _dialog = dialog;
+        _coordinator = coordinator;
     }
 
     [ObservableProperty]
@@ -64,6 +66,12 @@ public partial class ImportViewModel : ObservableObject
         using (Stream source = await photo.OpenReadAsync())
         using (FileStream destStream = File.Create(dest))
             await source.CopyToAsync(destStream);
+
+        // Start segmentation right away, in the background -- NOT awaited, so this import (and a possible
+        // multi-photo PickAsync loop around it) never waits on the model. Owner's report, 2026-10-28: before
+        // this, nothing ever ran segmentation until the user opened SegmentPage for this specific item, so
+        // Home's "Đang tách nền" badge on a freshly-imported item was never actually true until then.
+        _coordinator.EnqueueIfNeeded(item.Id);
 
         // A lightweight thumbnail right away, not only after segmentation finishes (review 2026-10-27): without
         // this, ItemRow.ThumbPath fell back to the ORIGINAL file for any item still in the "Imported" state --

@@ -21,22 +21,41 @@
               BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
             <Label Text="Logo Extract" FontSize="22" FontAttributes="Bold" VerticalOptions="Center"
                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-            <!-- 44x44, not the previous 40x40 (accessibility baseline, consistency pass 2026-10-27): this Border
-                 IS the tap target (TapGestureRecognizer on it directly), a stock control's own 44dp-floor style
-                 doesn't apply to a bare Border. Icon uses Tertiary in Light theme, not Primary — Primary-as-
-                 foreground on this pale Secondary tile measures ~2.5:1 (see Colors.xaml's Tertiary remarks). -->
-            <Border Grid.Column="1" WidthRequest="44" HeightRequest="44" StrokeThickness="0"
-                    BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="22" />
-                </Border.StrokeShape>
-                <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
-                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
-                       TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding ImportCommand}" />
-                </Border.GestureRecognizers>
-            </Border>
+            <!-- 44x44, not the previous 40x40 (accessibility baseline, consistency pass 2026-10-27): each Border
+                 IS its own tap target (TapGestureRecognizer directly on it), a stock control's own 44dp-floor
+                 style doesn't apply to a bare Border. Icon uses Tertiary in Light theme, not Primary — Primary-
+                 as-foreground on this pale Secondary tile measures ~2.5:1 (see Colors.xaml's Tertiary remarks).
+                 Settings added 2026-10-28 as a second same-style icon, placed rightmost/outermost next to Import
+                 — same relative order as DocScanner's own header icon row (Settings is its last/outermost icon
+                 too). Settings uses a plain Tapped code-behind handler, not a Command binding like Import's,
+                 because ItemsViewModel.cs is out of scope this session (an unrelated bug fix landed there) — a
+                 one-off exception to this app's usual Command-first convention, not a new pattern to copy. -->
+            <HorizontalStackLayout Grid.Column="1" Spacing="10">
+                <Border WidthRequest="44" HeightRequest="44" StrokeThickness="0"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="22" />
+                    </Border.StrokeShape>
+                    <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
+                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ImportCommand}" />
+                    </Border.GestureRecognizers>
+                </Border>
+                <Border WidthRequest="44" HeightRequest="44" StrokeThickness="0"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="22" />
+                    </Border.StrokeShape>
+                    <Label Text="{x:Static views:Icons.Settings}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
+                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSettingsTapped" />
+                    </Border.GestureRecognizers>
+                </Border>
+            </HorizontalStackLayout>
         </Grid>
         <BoxView Grid.Row="0" HeightRequest="0.6" VerticalOptions="End"
                  Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />

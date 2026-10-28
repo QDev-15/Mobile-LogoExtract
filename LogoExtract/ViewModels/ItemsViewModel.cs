@@ -12,13 +12,17 @@ namespace LogoExtract.ViewModels;
 
 /// <summary>One row of the items-view list (PLAN.md 2.6). Tap/delete are wired from the page's XAML to the
 /// parent ItemsViewModel's own commands with this row as the CommandParameter, not owned by the row itself.</summary>
-public sealed class ItemRow(LogoItem record, string itemFolder)
+public sealed class ItemRow(LogoItem record, string itemFolder, bool isProcessing)
 {
     public LogoItem Record { get; } = record;
     public string Name => Record.Name;
+    // isProcessing comes from SegmentationCoordinator, not from Record.State: Imported alone no longer implies
+    // "actively running" now that ImportViewModel enqueues background segmentation immediately (2026-10-28) --
+    // without this split, a run that failed/timed out and left the item at Imported would keep claiming "Đang
+    // tách nền" forever even though nothing is happening, the exact bug this whole change was meant to fix.
     public string StateText => Record.State switch
     {
-        ItemState.Imported => "Đang tách nền",
+        ItemState.Imported => isProcessing ? "Đang tách nền" : "Chưa tách nền",
         ItemState.Segmented => "Chờ làm phẳng",
         ItemState.Flattened => "Đã làm phẳng",
         ItemState.Vectorized => "Hoàn tất",
@@ -50,7 +54,11 @@ public sealed class ItemRow(LogoItem record, string itemFolder)
     // Imported can be sent back to re-run it for real. Flattened/Vectorized route through the same "re-run"
     // path as Segmented; there is no separate manual override for THEIR own later steps, only for segmentation
     // itself, which is the one step this app runs automatically/without the user asking.
-    public bool IsStuckState => Record.State == ItemState.Imported;
+    // `&& !isProcessing`: an Imported item with a background run genuinely still queued/in flight is not stuck
+    // at all -- offering "Đánh dấu hoàn thành" over something that's actively working would just invite the
+    // owner to bail on it needlessly. Only an Imported item with NO run behind it (background one already
+    // failed/timed out, or this item predates SegmentationCoordinator) counts as stuck.
+    public bool IsStuckState => Record.State == ItemState.Imported && !isProcessing;
     public string ToggleStateLabel => IsStuckState ? "Đánh dấu hoàn thành" : "Tách lại nền";
     public string ToggleStateIcon => IsStuckState ? Icons.Checked : Icons.Refresh;
 
@@ -68,6 +76,7 @@ public partial class ItemsViewModel : ObservableObject
     private readonly ItemStore _store;
     private readonly AppDialog _dialog;
     private readonly Lazy<ISegmentationService> _segmentation;
+    private readonly SegmentationCoordinator _coordinator;
 
     // Per-item generation counters (same pattern as SegmentViewModel's own _generation field, applied per item
     // id here since the dashboard can have a retry in flight for one item while acting on another). Owner's
@@ -87,11 +96,18 @@ public partial class ItemsViewModel : ObservableObject
     private bool IsCurrentGeneration(string itemId, int generation) =>
         _itemGenerations.GetValueOrDefault(itemId) == generation;
 
-    public ItemsViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog)
+    public ItemsViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog, SegmentationCoordinator coordinator)
     {
         _store = store;
         _segmentation = segmentation;
         _dialog = dialog;
+        _coordinator = coordinator;
+        // Background imports (SegmentationCoordinator, 2026-10-28) start/finish on their own schedule, not tied
+        // to Home ever appearing -- without this, a batch import would only flip from "Đang tách nền" to "Chờ
+        // làm phẳng" the NEXT time the owner happened to navigate back to Home (OnAppearing's own Refresh()),
+        // not live while they're actually looking at the list. StateChanged fires on a thread-pool thread (see
+        // its own doc comment), hence the dispatch.
+        _coordinator.StateChanged += () => MainThread.BeginInvokeOnMainThread(Refresh);
         Refresh();
     }
 
@@ -110,7 +126,7 @@ public partial class ItemsViewModel : ObservableObject
     {
         Items.Clear();
         foreach (LogoItem record in _store.List())
-            Items.Add(new ItemRow(record, _store.ItemFolder(record.Id)));
+            Items.Add(new ItemRow(record, _store.ItemFolder(record.Id), _coordinator.IsQueuedOrRunning(record.Id)));
         IsEmpty = Items.Count == 0;
     }
 

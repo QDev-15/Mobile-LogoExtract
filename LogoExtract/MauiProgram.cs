@@ -64,14 +64,26 @@ public static class MauiProgram
 		// screen regardless of which page triggered it.
 		builder.Services.AddSingleton<AppDialog>();
 
+		// Singleton: its own background worker loop must outlive any one page (ImportViewModel enqueues a
+		// background segmentation run and immediately navigates away; the run has to keep going after that
+		// transient ViewModel is gone), and ItemsViewModel/SegmentViewModel both need to observe/await the SAME
+		// in-flight queue, not each get their own.
+		builder.Services.AddSingleton<SegmentationCoordinator>();
+
 		builder.Services.AddTransient<ItemsViewModel>();
 		builder.Services.AddTransient<ImportViewModel>();
 		builder.Services.AddTransient<SegmentViewModel>();
 		builder.Services.AddTransient<EditViewModel>();
+		builder.Services.AddTransient<SettingsViewModel>();
 		builder.Services.AddTransient<HomePage>();
 		builder.Services.AddTransient<ImportPage>();
 		builder.Services.AddTransient<SegmentPage>();
 		builder.Services.AddTransient<EditPage>();
+		builder.Services.AddTransient<SettingsPage>();
+		// AboutPage/PrivacyPolicyPage have no ViewModel (plain static/display pages, same shape as PdfReader's
+		// and Minesweeper's own About/Privacy pages) -- only the page itself needs a DI registration.
+		builder.Services.AddTransient<AboutPage>();
+		builder.Services.AddTransient<PrivacyPolicyPage>();
 
 #if DEBUG
 		builder.Logging.AddDebug();

@@ -22,6 +22,10 @@ public partial class HomePage : ContentPage
         _vm.Refresh();
     }
 
+    /// <summary>Settings gear icon in the header -- plain Tapped handler, not a Command binding, because
+    /// ItemsViewModel.cs is out of scope this session (see HomePage.xaml's own header comment).</summary>
+    private async void OnSettingsTapped(object? sender, TappedEventArgs e) => await Shell.Current.GoToAsync(nameof(SettingsPage));
+
     /// <summary>HomePage is the Shell root (sole ShellContent, FlyoutBehavior disabled) -- Back here would
     /// otherwise exit the app on the very first press, which is too easy to trigger by accident (an edge swipe
     /// while scrolling the list). Added 2026-10-27, same shape as PdfReader's DashboardPage/DocScanner's

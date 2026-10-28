@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="LogoExtract.Views.AboutPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:LogoExtract.Views"
+    Title="Thông tin ứng dụng"
+    BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
+
+    <!-- Header image: about_mark.svg (Resources/Images), a rounded-square composite of this app's own
+         appicon.svg + appiconfg.svg, NOT a referenced-but-missing logo.png (PdfReader's own AboutPage.xaml
+         references "logo.png", which isn't actually in that repo's own source, not an asset pipeline worth
+         copying blindly). Covered by the existing `<MauiImage Include="Resources\Images\*" />` glob, no
+         .csproj change needed. Privacy is its own dedicated PrivacyPolicyPage (not folded into this page like
+         PdfReader does); just one tappable row below links to it, same chevron pattern as Settings' own
+         rows. Relies on AppShell's default native Shell nav bar for Back + Title, same as this app's other
+         non-root pages; no ad banner, matching this app's own Home-only ad placement. -->
+    <ContentPage.Resources>
+        <Style x:Key="Section" TargetType="Label">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontFamily" Value="OpenSansSemibold" />
+            <Setter Property="Margin" Value="18,18,18,6" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+        </Style>
+        <Style x:Key="Body" TargetType="Label">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="1.3" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="Margin" Value="16,0" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 16" />
+        </Style>
+    </ContentPage.Resources>
+
+    <Grid>
+        <ScrollView>
+            <VerticalStackLayout Padding="0,0,0,28" Spacing="10">
+
+                <!-- Header -->
+                <VerticalStackLayout Padding="16,28,16,8" Spacing="6" HorizontalOptions="Center">
+                    <Image Source="about_mark.svg" WidthRequest="84" HeightRequest="84" HorizontalOptions="Center" />
+                    <Label Text="Logo Extract" FontSize="22" FontFamily="OpenSansSemibold" HorizontalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                    <Label x:Name="VersionLabel" FontSize="13" HorizontalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                    <Label Text="Tách logo khỏi áo, làm sạch và vector hoá ngay trên điện thoại." FontSize="13"
+                           HorizontalOptions="Center" HorizontalTextAlignment="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                </VerticalStackLayout>
+
+                <Label Text="TÁC GIẢ VÀ LIÊN HỆ" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Tác giả: Nguyễn Hữu Quỳnh" FontSize="15" FontFamily="OpenSansSemibold"
+                               TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" MinimumHeightRequest="44">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnEmail" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="{x:Static views:Icons.Mail}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
+                                   VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                            <Label Grid.Column="1" Text="nguyenquynhvp.ictu@gmail.com" FontSize="14" TextDecorations="Underline"
+                                   VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" MinimumHeightRequest="44">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPhone" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="{x:Static views:Icons.Phone}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
+                                   VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                            <Label Grid.Column="1" Text="0988 632 841" FontSize="14" TextDecorations="Underline"
+                                   VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                        </Grid>
+                        <Label Text="Hỗ trợ, góp ý, báo lỗi: gửi email hoặc gọi số trên." Style="{StaticResource Body}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="ĐIỀU KHOẢN SỬ DỤNG" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Style="{StaticResource Body}"
+                               Text="1. Logo Extract xử lý ảnh do chính bạn chụp hoặc chọn từ thư viện để tách nền, làm sạch và vector hoá logo. Bạn tự chịu trách nhiệm có đủ quyền sử dụng đối với logo/hình ảnh mình xử lý và phải tuân thủ pháp luật về bản quyền." />
+                        <Label Style="{StaticResource Body}"
+                               Text="2. Ứng dụng được cung cấp theo hiện trạng (as-is), không có bảo hành. Kết quả tách nền, làm phẳng hoặc vector hoá có thể không hoàn hảo với mọi ảnh đầu vào; tác giả không chịu trách nhiệm về thiệt hại phát sinh từ việc mất dữ liệu hoặc kết quả không như ý. Hãy tự kiểm tra và sao lưu các tệp quan trọng." />
+                        <Label Style="{StaticResource Body}"
+                               Text="3. Không được sao chép, dịch ngược, sửa đổi hay phân phối lại ứng dụng khi chưa có sự đồng ý bằng văn bản của tác giả." />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="QUYỀN RIÊNG TƯ" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="44">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnPrivacyPolicyTapped" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Xem chính sách quyền riêng tư" FontSize="14.5" VerticalOptions="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.ChevronRight}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
+                               VerticalOptions="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                    </Grid>
+                </Border>
+
+                <Label Text="BẢN QUYỀN" Style="{StaticResource Section}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="© 2026 Nguyễn Hữu Quỳnh. Mọi quyền được bảo lưu." FontSize="14" FontFamily="OpenSansSemibold"
+                               TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                        <Label Style="{StaticResource Body}" Text="Phần giao diện, tách nền, làm sạch và vector hoá do tác giả tự viết. Ứng dụng có dùng các thành phần mã nguồn mở sau, theo giấy phép của chúng:" />
+                        <Label Style="{StaticResource Body}"
+                               Text="• .NET MAUI, Microsoft.Maui.Controls (MIT) · Microsoft&#10;• CommunityToolkit.Mvvm (MIT) · Microsoft&#10;• Microsoft.ML.OnnxRuntime (MIT) · Microsoft — chạy mô hình tách nền ngay trên máy&#10;• SkiaSharp.Views.Maui.Controls (MIT) · Microsoft — vẽ ảnh xem trước và chỉnh màu&#10;• Các thư viện AndroidX (Apache-2.0) · Google, binding .NET (MIT) · Microsoft&#10;• Material Icons (Apache-2.0) · Google&#10;• Open Sans (SIL Open Font License 1.1) · Google Fonts&#10;• LevelPlay / ironSource (mediation quảng cáo) · ironSource (Unity)" />
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Only action on this page that can fail is the mailto:/tel: launch fallback below, that's the
+             "specific action that genuinely needs a confirm/alert dialog" this page gets AppDialog for;
+             nothing else here needs it (mobile-app-design.md §5.5: never native DisplayAlert). -->
+        <views:AppDialogOverlay />
+    </Grid>
+</ContentPage>

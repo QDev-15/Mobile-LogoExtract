@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="LogoExtract.Views.PrivacyPolicyPage"
+             Title="Chính sách quyền riêng tư"
+             BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
+
+    <!-- Plain static display page (no ViewModel, no AppDialogOverlay, no ad banner), same lightweight shape
+         as Minesweeper's own PrivacyPolicyPage, adapted to LogoExtract's actual facts: everything the user
+         imports or produces (photos, masks, cutouts, vector files) stays in this app's own private on-device
+         storage (see LogoExtract.Core/ItemStore.cs's own doc comment: one folder per item under
+         FileSystem.AppDataDirectory), nothing uploaded anywhere; the only third party is the LevelPlay/
+         ironSource ads SDK (there is no Billing/IAP SDK in this app at all, so Minesweeper's "Billing"
+         sub-section is dropped entirely, not just left empty). Relies on AppShell's default native Shell nav
+         bar for Back + Title, same as this app's other non-root pages. -->
+    <ContentPage.Resources>
+        <Style x:Key="PolicyHeading" TargetType="Label">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontFamily" Value="OpenSansSemibold" />
+            <Setter Property="Margin" Value="0,18,0,6" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        </Style>
+        <Style x:Key="PolicyBody" TargetType="Label">
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="LineHeight" Value="1.4" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+        </Style>
+        <Style x:Key="Hint" TargetType="Label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        </Style>
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20,4,20,28">
+            <Label Style="{StaticResource Hint}" Text="Cập nhật lần cuối: 28/10/2026" />
+
+            <Label Text="Tổng quan" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Logo Extract tách nền, làm sạch và vector hoá logo từ ảnh do bạn chụp hoặc chọn. Toàn bộ xử lý diễn ra ngay trên điện thoại; chính sách này giải thích dữ liệu nào được lưu, lưu ở đâu, và bên thứ ba nào (nếu có) được dùng." />
+
+            <Label Text="Dữ liệu được lưu trực tiếp" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Ảnh gốc, mặt nạ (mask) tách nền, ảnh đã cắt (cutout) và file vector do ứng dụng tạo ra chỉ được lưu trong bộ nhớ riêng của ứng dụng trên điện thoại này, mỗi logo một thư mục riêng. Không có bản sao nào được gửi lên máy chủ hay nơi nào khác, trừ khi chính bạn chọn Chia sẻ, Xuất, hoặc Lưu vào thư viện ảnh." />
+
+            <Label Text="Bên thứ ba" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Ứng dụng dùng một bên thứ ba duy nhất để hiển thị quảng cáo:" />
+            <Border Style="{StaticResource Card}" Margin="0,8,0,0">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="LevelPlay / ironSource (mediation quảng cáo)" FontFamily="OpenSansSemibold" FontSize="13"
+                           TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                    <Label Style="{StaticResource Hint}"
+                           Text="Hiển thị banner quảng cáo trong ứng dụng, có thể thu thập một số dữ liệu thiết bị/quảng cáo theo chính sách riêng của ironSource và các mạng quảng cáo mà nó kết nối tới." />
+                </VerticalStackLayout>
+            </Border>
+            <Label Style="{StaticResource PolicyBody}" Margin="0,10,0,0"
+                   Text="Ứng dụng không có tính năng mua trong ứng dụng (IAP) nên không dùng bất kỳ SDK thanh toán nào." />
+
+            <Label Text="Quyền truy cập" Style="{StaticResource PolicyHeading}" />
+            <Border Style="{StaticResource Card}">
+                <Label Style="{StaticResource PolicyBody}"
+                       Text="Camera: để chụp ảnh áo/vật phẩm có logo ngay trong ứng dụng. Ảnh và thư viện ảnh: để chọn ảnh có sẵn và để lưu kết quả (ảnh đã tách nền, file vector) vào thư viện ảnh của bạn khi được yêu cầu." />
+            </Border>
+
+            <Label Text="Trẻ em" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Ứng dụng không hướng đến trẻ em và không cố ý thu thập dữ liệu cá nhân của trẻ em." />
+
+            <Label Text="Lưu trữ và xoá dữ liệu" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Dữ liệu của mỗi logo (ảnh, mặt nạ, cutout, file vector) được giữ cho đến khi bạn xoá mục đó ở màn hình Trang chủ. Xoá một mục sẽ xoá ngay thư mục tương ứng trên máy — không có bản sao nào ở máy chủ để lưu lại." />
+
+            <Label Text="Thay đổi chính sách" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Nội dung chính sách này có thể được cập nhật khi ứng dụng có thay đổi. Phiên bản mới sẽ được hiển thị ngay tại màn hình này." />
+
+            <Label Text="Liên hệ" Style="{StaticResource PolicyHeading}" />
+            <Label Style="{StaticResource PolicyBody}"
+                   Text="Mọi câu hỏi về quyền riêng tư, vui lòng liên hệ Nguyễn Hữu Quỳnh qua email nguyenquynhvp.ictu@gmail.com hoặc số điện thoại 0988 632 841." />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

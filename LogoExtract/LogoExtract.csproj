@@ -18,7 +18,7 @@
 		<ApplicationId>btk.logoextract</ApplicationId>
 
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
+		<ApplicationVersion>2</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 
@@ -42,7 +42,7 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
-		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+		<AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
 		<EnableLLVM>false</EnableLLVM>
 		<AndroidLinkTool>r8</AndroidLinkTool>
 		<AndroidLinkMode>Full</AndroidLinkMode>
@@ -53,7 +53,7 @@
 	     Exists(...) so a Debug build, or a fresh checkout without this local-only folder, never fails. -->
 	<Import Project="release\Signing.props" Condition="'$(Configuration)' == 'Release' AND Exists('release\Signing.props')" />
 
-<Target Name="CopyReleaseAabWithVersion" AfterTargets="Publish"
+	<Target Name="CopyReleaseAabWithVersion" AfterTargets="Publish"
 	        Condition="'$(Configuration)' == 'Release' AND '$(AndroidPackageFormat)' == 'aab'">
 		<ItemGroup>
 			<_SignedAab Include="$(PublishDir)*-Signed.aab" />
@@ -85,11 +85,16 @@
 		<Message Importance="high" Condition="'@(_SignedAab)' != ''" Text="Release build copied to $(_ReleaseDir) (aab + mapping.txt)" />
 	</Target>
 	<ItemGroup>
-		<!-- Color is the flat fallback background some platform paths use even with the SVG present; kept
-		     consistent with the gradient's dominant brand tone (Primary mint) now that appicon.svg is a real
-		     hand-authored mint gradient, not the near-black template placeholder. -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="1" Color="#1FAE82" />
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0A0B0D" BaseSize="160,160" />
+		<!-- Color is the flat fallback background some platform paths use even with the SVG present. Updated
+		     2026-10-28 (icon-replacement pass, owner-provided reference image) from #1FAE82 (old mint) to
+		     #392A24, the midpoint of the new dark-brown gradient's two stops (appicon.svg); it also lands
+		     almost exactly on the flat brown sampled directly from the reference image itself, so it is a
+		     faithful single-color fallback, not just an arbitrary average. -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="1" Color="#392A24" />
+		<!-- Same #392A24 fallback as the MauiIcon entry above, for the same reason: splash.svg bakes in its own
+		     dark-brown gradient background and only needs a coherent letterbox tone behind it (design agent,
+		     2026-10-28; see splash.svg's own comment for the full reasoning). -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#392A24" BaseSize="160,160" />
 		<MauiImage Include="Resources\Images\*" />
 		<MauiFont Include="Resources\Fonts\*" />
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />

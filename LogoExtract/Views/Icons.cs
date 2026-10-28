@@ -20,4 +20,14 @@ public static class Icons
     public const string Close = "";     // close -- "Huỷ"
     public const string Camera = "";    // photo_camera -- "Chụp ảnh"
     public const string Refresh = ""; // refresh -- "Tách lại nền" (HomePage's status-override button)
+
+    // Settings/About/Privacy (added 2026-10-28). Codepoints copied verbatim from the identical Material Icons
+    // font in the sibling PdfReader repo's own Views/Icons.cs (same MaterialIcons-Regular.ttf file) -- written
+    // as \uXXXX escapes rather than pasted raw glyphs, since those PUA codepoints don't render as visible text
+    // while editing/reviewing this file.
+    public const string Settings = "";     // settings -- HomePage header gear icon
+    public const string Info = "";         // info -- Settings' "Thông tin ứng dụng" row
+    public const string Mail = "";         // email -- AboutPage contact row
+    public const string Phone = "";        // phone -- AboutPage contact row
+    public const string ChevronRight = ""; // chevron_right -- Settings/About tappable row trailing glyph
 }

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- App icon background: mint brand gradient, PrimaryDark (#27E3A3, "brighter mint" token) in the top-left
-     corner to Tertiary (#1A6B50, "darker-than-Primary brand shade" token) in the bottom-right; same diagonal
-     light-to-dark gradient approach as DocScanner's appicon.svg, adapted to LogoExtract's own mint tokens
-     instead of introducing new one-off hexes. The foreground extraction mark sits on top. -->
+<!-- App icon background (design agent, 2026-10-28 icon-replacement pass): dark chocolate-brown gradient,
+     matching the owner's reference image closely ("thay logo bằng icon này" — a close recreation, not a
+     loose variant this time; see appiconfg.svg's own comment for the full brief). Sampled directly from the
+     reference PNG (scratchpad pixel probe): the tile reads as a near-flat #392B26 brown; this gradient's two
+     stops average to almost exactly that value, so it keeps the portfolio's own "every appicon.svg is a
+     diagonal light-to-dark gradient" convention (see the git history of this exact file) while still landing
+     visually on the reference's flat brown. No app-wide Colors.xaml token exists for this brown (by design —
+     this task is scoped to the icon/splash mark only, not a re-theme of the rest of the app's mint UI), so it
+     is a deliberate one-off literal here, same way PdfReader/DocScanner's own appicon.svg gradients are
+     one-off literals rather than resource references (SVG can't consume XAML DynamicResource anyway). -->
 <svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#27E3A3"/>
-      <stop offset="1" stop-color="#1A6B50"/>
-    </linearGradient>
-  </defs>
-  <rect x="0" y="0" width="456" height="456" fill="url(#bg)"/>
+  
 </svg>
