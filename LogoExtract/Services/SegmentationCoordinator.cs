@@ -17,12 +17,6 @@ namespace LogoExtract.Services;
 /// instead of paying for a second, redundant ONNX call on the same photo.</summary>
 public sealed class SegmentationCoordinator
 {
-    // Same bound as SegmentViewModel.SegmentTimeout/ItemsViewModel's own copy, for the same reason: ONNX's
-    // InferenceSession.Run has no cancellation hook, so a hung model call can't be aborted, only given up on.
-    // Essential here specifically BECAUSE the queue is serial -- one stuck item would otherwise block every
-    // photo imported after it, forever, not just itself.
-    private static readonly TimeSpan SegmentTimeout = TimeSpan.FromSeconds(30);
-
     private readonly ItemStore _store;
     private readonly Lazy<ISegmentationService> _segmentation;
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
@@ -74,6 +68,49 @@ public sealed class SegmentationCoordinator
         }
     }
 
+    /// <summary>Owner's report, 2026-10-28: opened SegmentPage for an item right after tapping Home's "Tách lại
+    /// nền" for that SAME item -- before this, the dashboard's manual retry ran its own segmentation call
+    /// completely outside this coordinator, so (1) the row's badge still read "isProcessing=false" (wrong text,
+    /// and ItemRow.IsStuckState stayed true, inviting a second, concurrent tap of "Đánh dấu hoàn
+    /// thành" on the very same item) and (2) <see cref="WaitIfRunningAsync"/> had nothing to find, so opening
+    /// SegmentPage started a SECOND independent segmentation run concurrently with the first -- two writers
+    /// racing on the same cutout.png/thumb.png/mask.png files. ItemsViewModel's manual retry/mark-complete now
+    /// wrap their own run in this instead of running unregistered: returns null if something is ALREADY
+    /// queued/running for this id (caller should fall back to <see cref="WaitIfRunningAsync"/> instead of
+    /// starting a duplicate); otherwise returns a handle whose Dispose releases the slot and wakes anyone
+    /// waiting on it, exactly like the background queue's own run does when it finishes.</summary>
+    public IDisposable? TryBeginExternalRun(string itemId)
+    {
+        lock (_gate)
+        {
+            if (!_queuedOrRunning.Add(itemId)) return null;
+        }
+        StateChanged?.Invoke();
+        return new ExternalRun(this, itemId);
+    }
+
+    private sealed class ExternalRun(SegmentationCoordinator owner, string itemId) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            TaskCompletionSource<bool>? tcs;
+            lock (owner._gate)
+            {
+                owner._queuedOrRunning.Remove(itemId);
+                owner._completions.Remove(itemId, out tcs);
+            }
+            // The exact success/failure of an external run isn't tracked here (ItemsViewModel already shows its
+            // own alert/retry affordance on failure) -- a waiter only needs to know "it's done, go re-check the
+            // item's own state", same as RunLoopAsync's own tcs.TrySetResult on the background path.
+            tcs?.TrySetResult(true);
+            owner.StateChanged?.Invoke();
+        }
+    }
+
     private async Task RunLoopAsync()
     {
         await foreach (string itemId in _queue.Reader.ReadAllAsync())
@@ -113,30 +150,17 @@ public sealed class SegmentationCoordinator
             return false;
         }
 
-        Task<SKBitmap> segmentTask;
-        try
-        {
-            segmentTask = Task.Run(() => BackgroundPriority.RunLowPriority(() => _segmentation.Value.Segment(image).AlphaMask));
-            if (await Task.WhenAny(segmentTask, Task.Delay(SegmentTimeout)) != segmentTask)
-            {
-                Android.Util.Log.Error("LogoExtractPerf", $"[Import] background segmentation TIMED OUT after {SegmentTimeout.TotalSeconds}s for {itemId}");
-                // image is deliberately NOT disposed here -- segmentTask may still be reading it in the
-                // background (no cancellation hook, same as every other segmentation call site in this app).
-                // The observer below disposes both once that call actually finishes, however late.
-                _ = segmentTask.ContinueWith(t => ObserveLateFault(t, image), TaskScheduler.Default);
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            Android.Util.Log.Error("LogoExtractPerf", $"[Import] background segmentation FAILED for {itemId}: {ex}");
-            image.Dispose();
-            return false;
-        }
+        // disposeIfOrphaned: image -- on timeout the background call may still be reading it; SegmentationRunner
+        // defers the dispose until that call actually finishes, however late, instead of disposing it out from
+        // under a thread that's still using it.
+        SegmentationRunner.Result result = await SegmentationRunner.RunAsync(
+            () => _segmentation.Value.Segment(image).AlphaMask, "Import", disposeIfOrphaned: image);
+        if (result.Outcome == SegmentationRunner.Outcome.TimedOut) return false;
+        if (result.Outcome == SegmentationRunner.Outcome.Failed) { image.Dispose(); return false; }
 
         try
         {
-            using SKBitmap mask = await segmentTask;
+            using SKBitmap mask = result.Mask!;
             // Re-check: SegmentViewModel may have taken over this exact item (user opened it) and already saved
             // its own result while this queue entry was waiting its turn -- that result is simply stale, not
             // wrong; discard rather than overwrite a newer save.
@@ -146,7 +170,7 @@ public sealed class SegmentationCoordinator
                 CutoutCompositor.WriteMask(mask, folder);
                 CutoutCompositor.WriteCutoutAndThumb(image, mask, folder);
             });
-            _store.Update(itemId, i => i with { State = ItemState.Segmented, CutoutFile = "cutout.png", ThumbFile = "thumb.png" });
+            _store.MarkSegmented(itemId);
             return true;
         }
         catch (Exception ex)
@@ -158,14 +182,5 @@ public sealed class SegmentationCoordinator
         {
             image.Dispose();
         }
-    }
-
-    private static void ObserveLateFault(Task<SKBitmap> task, SKBitmap image)
-    {
-        if (task.Exception != null)
-            Android.Util.Log.Error("LogoExtractPerf", $"[Import] late background segmentation result after timeout: {task.Exception}");
-        else if (task.IsCompletedSuccessfully)
-            task.Result.Dispose();
-        image.Dispose();
     }
 }

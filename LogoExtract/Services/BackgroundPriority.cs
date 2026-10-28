@@ -3,9 +3,9 @@ namespace LogoExtract.Services;
 /// <summary>Owner's report, 2026-10-28: a real device left "Đang tách nền" running for 7+ minutes with the
 /// WHOLE UI unresponsive -- not just this app's own busy spinner, but input dispatch itself (confirmed via
 /// `adb shell dumpsys gfxinfo`, thousands of "High input latency" events during a run), to the point that even
-/// this app's own 30-second soft timeout (SegmentViewModel.SegmentTimeout) never fired, because its
-/// `Task.Delay` continuation also has to be scheduled on the SAME Android main-thread Looper the inference call
-/// was starving. Capping ONNX Runtime's own thread count (see U2NetSegmentationService's constructor) reduces
+/// this app's own 30-second soft timeout (SegmentationRunner.DefaultTimeout, used at every call site through
+/// that one shared class) never fired, because its `Task.Delay` continuation also has to be scheduled on the
+/// SAME Android main-thread Looper the inference call was starving. Capping ONNX Runtime's own thread count (see U2NetSegmentationService's constructor) reduces
 /// how much work competes for CPU, but on a loaded/throttled device that alone was not enough -- this additionally
 /// lowers the CALLING thread's OS scheduling priority for the duration of the model call, which is the standard
 /// Android mechanism (not a .NET-level construct) for making the kernel scheduler favor the main/UI thread over

@@ -45,7 +45,13 @@
 		<AndroidEnableProfiledAot>true</AndroidEnableProfiledAot>
 		<EnableLLVM>false</EnableLLVM>
 		<AndroidLinkTool>r8</AndroidLinkTool>
-		<AndroidLinkMode>Full</AndroidLinkMode>
+		<!-- AndroidLinkMode.Full confirmed 2026-10-28 (matched A/B test: Debug ~3s vs Release+Full stuck for
+		     minutes on the SAME device/photo; Release+None back to ~3s) as the root cause of this build's
+		     segmentation hang/slowness. R8's full code-shrink pass was removing something ONNX Runtime's C#
+		     bindings reach only via reflection, the same risk class already documented for this setting in the
+		     sibling PdfReader.csproj. SdkOnly (shrink only SDK/library assemblies, never this app's own code)
+		     measured just as fast as None on the same device while still trimming real size out of the APK. -->
+		<AndroidLinkMode>SdkOnly</AndroidLinkMode>
 	</PropertyGroup>
 
 	<!-- Upload-signing config (keystore path/passwords, AndroidPackageFormat=aab): lives in release\Signing.props,

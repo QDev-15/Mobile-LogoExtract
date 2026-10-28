@@ -88,10 +88,10 @@ public partial class ImportViewModel : ObservableObject
                 using SKBitmap? thumb = full.Resize(new SKImageInfo(320, Math.Max(thumbHeight, 1)), SKSamplingOptions.Default);
                 if (thumb == null) return;
                 using SKData data = thumb.Encode(SKEncodedImageFormat.Png, 90);
-                using FileStream stream = File.Create(Path.Combine(folder, "thumb.png"));
+                using FileStream stream = File.Create(Path.Combine(folder, CutoutCompositor.ThumbFileName));
                 data.SaveTo(stream);
             });
-            _store.Update(item.Id, i => i with { ThumbFile = "thumb.png" });
+            _store.Update(item.Id, i => i with { ThumbFile = CutoutCompositor.ThumbFileName });
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LogoExtract.Core.Imaging;
 
 namespace LogoExtract.Core;
 
@@ -107,6 +108,20 @@ public sealed class ItemStore
             return updated;
         }
     }
+
+    /// <summary>The one place that claims segmentation produced a usable result -- used to be a duplicated
+    /// <c>i with { State = ItemState.Segmented, CutoutFile = "cutout.png", ThumbFile = "thumb.png" }</c> literal
+    /// at every call site that finishes a segmentation run (background import, SegmentPage's auto-run and
+    /// region-select, the dashboard's "Đánh dấu hoàn thành"/"Tách lại nền"). Callers must have already written
+    /// those two files via <see cref="CutoutCompositor"/> before calling this.</summary>
+    public LogoItem MarkSegmented(string id) =>
+        Update(id, i => i with { State = ItemState.Segmented, CutoutFile = CutoutCompositor.CutoutFileName, ThumbFile = CutoutCompositor.ThumbFileName });
+
+    /// <summary>Sends an item back to square one so a fresh segmentation run can claim it -- the dashboard's
+    /// "Tách lại nền" uses this to flip the badge to "Đang tách nền" and drop the old cutout right away, before
+    /// the (possibly slow) model call even starts.</summary>
+    public LogoItem ResetToImported(string id) =>
+        Update(id, i => i with { State = ItemState.Imported, CutoutFile = null, ThumbFile = null });
 
     private void Save(LogoItem item)
     {

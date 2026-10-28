@@ -1,0 +1,211 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Vòng đời LogoItem</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* layout: hero diagram full-width, reference table + legend stacked below in a single reading column */
+  :root{
+    --bg:#f6f5f1; --panel:#ffffff; --ink:#1c2321; --ink-dim:#5b645f;
+    --line:#d8d6cc; --accent:#1fae82; --accent-ink:#0d5c42; --accent-soft:#e3f5ee;
+    --ghost:#9aa39d; --code-bg:#eef1ea;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14181a; --panel:#1b2124; --ink:#e9ece9; --ink-dim:#9aa6a0;
+      --line:#303a39; --accent:#34d399; --accent-ink:#9df0cf; --accent-soft:#17352b;
+      --ghost:#5d6a64; --code-bg:#20282a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14181a; --panel:#1b2124; --ink:#e9ece9; --ink-dim:#9aa6a0;
+    --line:#303a39; --accent:#34d399; --accent-ink:#9df0cf; --accent-soft:#17352b;
+    --ghost:#5d6a64; --code-bg:#20282a; color-scheme: dark;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    padding-left:max(16px, env(safe-area-inset-left,0px));
+    padding-right:max(16px, env(safe-area-inset-right,0px));
+    padding-block:28px 48px;
+  }
+  main{max-width:920px; margin:0 auto; display:flex; flex-direction:column; gap:28px}
+  h1{font-size:1.5rem; font-weight:700; margin:0 0 4px; letter-spacing:-0.01em}
+  .lede{color:var(--ink-dim); font-size:0.95rem; max-width:65ch; margin:0}
+  code, .mono{font-family:'IBM Plex Mono',monospace; font-size:0.85em; background:var(--code-bg); padding:0.1em 0.4em; border-radius:4px}
+
+  figure{margin:0; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px}
+  .diagram-scroll{overflow-x:auto}
+  .diagram-scroll svg{min-width:760px; max-width:100%; height:auto; display:block}
+  figcaption{color:var(--ink-dim); font-size:0.85rem; margin-top:10px; padding-top:10px; border-top:1px solid var(--line)}
+
+  svg text{fill:currentColor; font-family:'IBM Plex Sans',system-ui,sans-serif}
+  svg .mono-text{font-family:'IBM Plex Mono',monospace}
+  svg .lbl-title{font-weight:600; font-size:14px}
+  svg .lbl-sub{font-size:11.5px; fill:var(--ink-dim)}
+  svg .edge-lbl{font-size:11.5px; fill:var(--ink-dim)}
+  svg .edge-lbl-strong{font-size:11.5px; fill:var(--accent-ink); font-weight:600}
+  svg line, svg path.edge{stroke:currentColor; stroke-width:1.6; fill:none}
+  svg path.edge-ghost{stroke:var(--ghost); stroke-width:1.4; fill:none; stroke-dasharray:5 5}
+  svg rect.state{fill:var(--panel); stroke:currentColor; stroke-width:1.8}
+  svg rect.state-start{fill:var(--accent-soft); stroke:var(--accent-ink)}
+  svg rect.gate{fill:var(--accent-soft); stroke:var(--accent-ink); stroke-width:1.8}
+  svg rect.pill{fill:none; stroke:var(--ghost); stroke-width:1.3; stroke-dasharray:3 4}
+  svg rect.ghost-box{fill:none; stroke:var(--ghost); stroke-width:1.4; stroke-dasharray:5 5}
+  svg .ghost-text{fill:var(--ghost)}
+  svg circle.node-dot{fill:currentColor}
+
+  table{width:100%; border-collapse:collapse; font-size:0.88rem}
+  caption{text-align:left; font-weight:600; margin-bottom:8px; font-size:0.95rem}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--ink-dim); font-weight:500; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.03em}
+  tr:last-child td{border-bottom:none}
+  .state-chip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.78rem; font-weight:600; border:1.5px solid currentColor}
+  .chip-imported{color:#b8860b}
+  .chip-segmented{color:var(--accent-ink)}
+  .chip-flattened{color:var(--ghost); border-style:dashed}
+  .chip-vectorized{color:#6b5bd1}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .chip-imported{color:#e0b84d} :root:not([data-theme="light"]) .chip-vectorized{color:#b3a4ff} }
+  :root[data-theme="dark"] .chip-imported{color:#e0b84d}
+  :root[data-theme="dark"] .chip-vectorized{color:#b3a4ff}
+
+  .legend{display:flex; flex-wrap:wrap; gap:18px; font-size:0.85rem; color:var(--ink-dim)}
+  .legend-item{display:flex; align-items:center; gap:8px}
+  .swatch{width:26px; height:0; border-top:2px solid currentColor}
+  .swatch.dashed{border-top-style:dashed}
+  .swatch.gate{width:14px; height:14px; border-radius:4px; background:var(--accent-soft); border:1.6px solid var(--accent-ink)}
+</style>
+
+<main>
+  <div>
+    <h1>Vòng đời LogoItem</h1>
+    <p class="lede">4 trạng thái (<code>ItemState</code>) một ảnh đi qua, cái gì đẩy nó từ trạng thái này sang trạng thái kia, và màn hình nào (hoặc tiến trình nền nào) là người gọi thật.</p>
+  </div>
+
+  <figure>
+    <div class="diagram-scroll">
+      <svg viewBox="0 0 1200 580" role="img" aria-label="Sơ đồ trạng thái LogoItem: Imported chuyển sang Segmented qua một cổng SegmentationCoordinator nhận 3 nguồn kích hoạt (nhập ảnh, mở SegmentPage, Home tách lại/đánh dấu hoàn thành); Segmented chuyển sang Vectorized qua Vector hoá ở EditPage; Segmented và Vectorized có thể quay lại Imported qua Tách lại nền ở Home; Flattened được định nghĩa trong model nhưng chưa có chức năng nào set trạng thái này.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- trigger pills -->
+        <rect class="pill" x="140" y="50" width="190" height="55" rx="27"/>
+        <text class="lbl-sub" x="235" y="72" text-anchor="middle">Ngay sau khi nhập</text>
+        <text class="lbl-sub" x="235" y="87" text-anchor="middle">(tự động, hàng đợi nền)</text>
+
+        <rect class="pill" x="380" y="50" width="190" height="55" rx="27"/>
+        <text class="lbl-sub" x="475" y="72" text-anchor="middle">Mở SegmentPage</text>
+        <text class="lbl-sub" x="475" y="87" text-anchor="middle">(ảnh chưa có cutout)</text>
+
+        <rect class="pill" x="630" y="50" width="230" height="55" rx="27"/>
+        <text class="lbl-sub" x="745" y="72" text-anchor="middle">Home: Tách lại nền /</text>
+        <text class="lbl-sub" x="745" y="87" text-anchor="middle">Đánh dấu hoàn thành</text>
+
+        <!-- pill -> gate arrows -->
+        <path class="edge" d="M235,106 L370,232" marker-end="url(#arrow)"/>
+        <path class="edge" d="M475,106 L430,232" marker-end="url(#arrow)"/>
+        <path class="edge" d="M745,106 L470,232" marker-end="url(#arrow)"/>
+
+        <!-- start -->
+        <circle class="node-dot" cx="14" cy="265" r="6"/>
+        <line class="edge" x1="20" y1="265" x2="40" y2="265" marker-end="url(#arrow)"/>
+
+        <!-- Imported -->
+        <rect class="state state-start" x="40" y="225" width="190" height="80" rx="12"/>
+        <text class="lbl-title" x="135" y="259" text-anchor="middle">Imported</text>
+        <text class="lbl-sub" x="135" y="279" text-anchor="middle">mới nhập / đang tách nền</text>
+        <text class="lbl-sub" x="135" y="294" text-anchor="middle">(badge: "Đang/Chưa tách nền")</text>
+
+        <!-- Imported -> Gate -->
+        <line class="edge" x1="230" y1="265" x2="330" y2="265" marker-end="url(#arrow)"/>
+
+        <!-- Gate -->
+        <rect class="gate" x="330" y="232" width="170" height="66" rx="14"/>
+        <text class="lbl-title mono-text" x="415" y="258" text-anchor="middle" style="font-size:12.5px">SegmentationCoordinator</text>
+        <text class="edge-lbl" x="415" y="275" text-anchor="middle">tối đa 1 tiến trình / item</text>
+        <text class="edge-lbl" x="415" y="289" text-anchor="middle">(2 nguồn cùng lúc → 1 phải chờ)</text>
+
+        <!-- Gate -> Segmented -->
+        <line class="edge" x1="500" y1="265" x2="600" y2="265" marker-end="url(#arrow)"/>
+        <text class="edge-lbl" x="550" y="320" text-anchor="middle">ghi cutout.png/thumb.png/</text>
+        <text class="edge-lbl" x="550" y="334" text-anchor="middle">mask.png + MarkSegmented()</text>
+
+        <!-- Segmented -->
+        <rect class="state" x="600" y="225" width="190" height="80" rx="12"/>
+        <text class="lbl-title" x="695" y="259" text-anchor="middle">Segmented</text>
+        <text class="lbl-sub" x="695" y="279" text-anchor="middle">đã tách nền</text>
+        <text class="lbl-sub" x="695" y="294" text-anchor="middle">(model thật hoặc giữ toàn ảnh)</text>
+
+        <!-- Segmented -> Vectorized -->
+        <line class="edge" x1="790" y1="265" x2="970" y2="265" marker-end="url(#arrow)"/>
+        <text class="edge-lbl" x="880" y="245" text-anchor="middle">EditPage: "Vector hoá"</text>
+        <text class="edge-lbl" x="880" y="259" text-anchor="middle">dò viền mask.png → vector.svg</text>
+
+        <!-- Vectorized -->
+        <rect class="state" x="970" y="225" width="190" height="80" rx="12"/>
+        <text class="lbl-title" x="1065" y="259" text-anchor="middle">Vectorized</text>
+        <text class="lbl-sub" x="1065" y="279" text-anchor="middle">đã có đường viền</text>
+        <text class="lbl-sub" x="1065" y="294" text-anchor="middle">vector (vector.svg)</text>
+
+        <!-- Segmented -> Flattened (ghost, dashed) -->
+        <path class="edge-ghost" d="M640,305 L640,388" marker-end="url(#arrow)"/>
+        <rect class="ghost-box" x="600" y="392" width="190" height="72" rx="12"/>
+        <text class="lbl-title ghost-text" x="695" y="422" text-anchor="middle">Flattened</text>
+        <text class="edge-lbl ghost-text" x="695" y="439" text-anchor="middle">định nghĩa trong model,</text>
+        <text class="edge-lbl ghost-text" x="695" y="452" text-anchor="middle">0 nơi set trạng thái này</text>
+
+        <!-- back bus: Segmented + Vectorized -> Imported via "Tách lại nền" -->
+        <path class="edge" d="M750,305 L750,500 L135,500 L135,308" marker-end="url(#arrow)"/>
+        <path class="edge" d="M1065,305 L1065,500" />
+        <circle class="node-dot" cx="750" cy="500" r="4"/>
+        <text class="edge-lbl-strong" x="440" y="492" text-anchor="middle">Home: "Tách lại nền" (ItemsViewModel.RetrySegmentationAsync)</text>
+        <text class="edge-lbl" x="440" y="516" text-anchor="middle">reset Segmented/Vectorized → Imported, rồi tự tách lại qua cổng ở trên</text>
+      </svg>
+    </div>
+    <figcaption>3 nguồn khác nhau (hàng đợi nhập ảnh, mở SegmentPage, Home) đều phải đi qua cùng một cổng <span class="mono">SegmentationCoordinator</span> trước khi được tách nền — cổng này cũng quyết định chạy model AI thật hay chỉ giữ toàn ảnh (nếu nguồn là "Đánh dấu hoàn thành"). Nhờ vậy không có 2 tiến trình nào ghi file cùng lúc cho 1 item.</figcaption>
+  </figure>
+
+  <figure style="padding:18px 20px">
+    <table>
+      <caption>4 trạng thái và dữ liệu đi kèm</caption>
+      <thead>
+        <tr><th>Trạng thái</th><th>Ý nghĩa</th><th>File trên đĩa</th><th>Nơi set trạng thái</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="state-chip chip-imported">Imported</span></td>
+          <td>Mới nhập hoặc đang/cần tách nền</td>
+          <td><code>OriginalFile</code> (+ <code>ThumbFile</code> nếu đã tạo)</td>
+          <td><code>ItemStore.Create</code>, <code>ResetToImported</code></td>
+        </tr>
+        <tr>
+          <td><span class="state-chip chip-segmented">Segmented</span></td>
+          <td>Đã tách nền — model thật, hoặc "Đánh dấu hoàn thành" giữ toàn ảnh</td>
+          <td>+ <code>CutoutFile</code>, <code>ThumbFile</code>, <code>mask.png</code></td>
+          <td><code>ItemStore.MarkSegmented</code></td>
+        </tr>
+        <tr>
+          <td><span class="state-chip chip-flattened">Flattened</span></td>
+          <td>(chưa dùng) đã làm phẳng nếp nhăn logo</td>
+          <td>+ <code>FlattenedFile</code>, <code>WarpGrid</code> — dự kiến</td>
+          <td>— chưa có công cụ làm phẳng nào gọi tới</td>
+        </tr>
+        <tr>
+          <td><span class="state-chip chip-vectorized">Vectorized</span></td>
+          <td>Đã tạo đường viền (cut path) vector</td>
+          <td>+ <code>VectorFile</code> (<code>vector.svg</code>)</td>
+          <td><code>EditViewModel.VectorizeAsync</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </figure>
+
+  <div class="legend">
+    <div class="legend-item"><span class="swatch"></span> chuyển trạng thái đang hoạt động</div>
+    <div class="legend-item"><span class="swatch dashed"></span> định nghĩa sẵn nhưng chưa có code nào đi tới</div>
+    <div class="legend-item"><span class="swatch gate"></span> điểm chặn dùng chung (tối đa 1 tiến trình/item)</div>
+  </div>
+</main>

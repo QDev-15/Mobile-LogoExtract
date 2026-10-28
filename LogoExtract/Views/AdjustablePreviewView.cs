@@ -265,17 +265,26 @@ public sealed class AdjustablePreviewView : SKCanvasView
         }
     }
 
-    /// <summary>Same linear transform as LogoExtract.Core.Imaging.ColorAdjustFilter's per-channel LUT (brightness
-    /// in -1..1 maps to a -255..255 offset; contrast in -1..1 maps to a 0..∞ multiplicative scale via the same
-    /// tan() curve), expressed as a 4x5 color matrix (row-major, operates on 0..255 channel values) instead of a
-    /// lookup table, so the two previews produce identical-looking results. White balance is intentionally NOT
-    /// included here: EditPage has no white-balance control yet (PLAN.md 2.4, not built), so
-    /// ColorAdjust.WhiteBalance is always its default (1,1,1) in this app today.</summary>
+    /// <summary>Same linear transform as LogoExtract.Core.Imaging.ColorAdjustFilter's per-channel LUT (contrast
+    /// in -1..1 maps to a 0..∞ multiplicative scale via the same tan() curve), expressed as a 4x5 color matrix
+    /// instead of a lookup table, so the two previews produce identical-looking results.
+    ///
+    /// <para>Owner's report, 2026-10-28: "kéo giảm sáng nó bị đen hình, tăng sáng nó bị trắng hình... tương phản
+    /// cũng lỗi tương tự" -- SkiaSharp's <see cref="SKColorFilter.CreateColorMatrix"/> operates on UN-scaled 0..1
+    /// channel values (native Skia's own convention), unlike android.graphics.ColorMatrix's 0..255 convention
+    /// this was first ported from. The previous version fed it an offset on the 0..255 scale (up to ±255,
+    /// contrast's own 0..128 term included) -- hundreds of times too large for a channel that clamps at 1.0, so
+    /// almost any slider movement instantly saturated every pixel to solid black or white. Fixed by doing the
+    /// exact same (c - 0.5) * contrast + 0.5 + brightness shift ColorAdjustFilter's LUT does on byte values
+    /// 0..255, just pre-divided by 255 so it lands in the 0..1 range this API actually expects.</para>
+    ///
+    /// White balance is intentionally NOT included here: EditPage has no white-balance control yet (PLAN.md 2.4,
+    /// not built), so ColorAdjust.WhiteBalance is always its default (1,1,1) in this app today.</summary>
     private static float[] BuildColorMatrix(double brightnessNorm, double contrastNorm)
     {
-        float brightness = (float)(brightnessNorm * 255);
+        float brightness = (float)brightnessNorm; // already -1..1 -- a full-scale shift on a 0..1 channel
         float contrast = (float)Math.Tan((contrastNorm + 1) * Math.PI / 4);
-        float offset = 128f - 128f * contrast + brightness;
+        float offset = 0.5f - 0.5f * contrast + brightness;
         return
         [
             contrast, 0, 0, 0, offset,

@@ -26,6 +26,46 @@ Kế hoạch chi tiết đầy đủ (pipeline, tính năng, CÓ THỂ/KHÔNG TH
 
 ---
 
+## Lỗi đã biết: `AndroidLinkMode=Full` làm bản Release lỗi ngầm — không crash, không log
+
+Phát hiện 2026-10-28, qua test A/B Debug vs Release nhiều lần trên máy thật (Samsung Note10+). Đây là lớp lỗi
+**rất dễ nhầm sang lỗi logic khác** vì không có exception, không có dòng log nào báo — nên note riêng ở đây,
+không chỉ trong log theo ngày bên dưới, để lần sau gặp lại còn nhớ nghi ngờ đúng chỗ ngay từ đầu.
+
+**`AndroidLinkMode` là gì**: cấu hình MSBuild (trong `LogoExtract.csproj`, PropertyGroup `Release`) điều khiển mức
+R8 "cắt tỉa" (trim/shrink) code khi build bản Release cho Android — xoá code mà công cụ phân tích tĩnh cho là
+"không ai gọi tới", để giảm dung lượng APK. 3 mức:
+- `None` — không cắt gì, APK to nhất, an toàn nhất.
+- `SdkOnly` — chỉ cắt code trong thư viện/SDK .NET for Android (BCL, binding assemblies), KHÔNG đụng code của
+  chính app. Cân bằng tốt giữa dung lượng và an toàn — **đang dùng mức này**.
+- `Full` — cắt cả code của app lẫn thư viện, dựa trên "cái gì không thấy gọi trực tiếp thì xoá".
+
+**Vì sao `Full` gây lỗi ở app này cụ thể**: trình cắt tỉa chỉ thấy các lời gọi TRỰC TIẾP trong IL. Bất cứ thứ gì
+được gọi gián tiếp — qua reflection, qua binding JNI (ONNX Runtime, SkiaSharp đều thuộc loại này) — nó không "thấy"
+đang được dùng nên có thể bị xoá nhầm, dù code C# gốc hoàn toàn bình thường và biên dịch sạch. Hậu quả: KHÔNG
+crash, KHÔNG log lỗi (bản thân việc log cũng có thể bị ảnh hưởng) — chỉ đơn giản một phần hành vi âm thầm không
+chạy đúng nữa.
+
+**2 triệu chứng đã xác nhận do `Full` gây ra** (cùng 1 nguyên nhân, 2 biểu hiện khác nhau):
+1. Tách nền cực chậm/treo vô thời hạn trên bản Release (ONNX Runtime bị ảnh hưởng) — xác nhận bằng A/B test:
+   Debug ~3s, Release+`Full` nhiều phút/treo hẳn, Release+`None` lại ~3s như Debug.
+2. Mở 1 ảnh đã tách nền xong từ Home → màn Tách nền hiện đen xì, không ảnh, không dialog lỗi, không dòng log nào
+   (`adb logcat` lọc theo tag app hoàn toàn im lặng trên bản `Full`, nhưng có log bình thường ngay khi đổi sang
+   `SdkOnly`) — nghi do SkiaSharp (hoặc chính cơ chế logging) bị cắt nhầm tương tự.
+
+**Đã sửa**: `LogoExtract.csproj` → `AndroidLinkMode` đổi từ `Full` sang `SdkOnly`. Dung lượng Release lớn hơn
+`Full` một chút nhưng không còn rủi ro cắt nhầm code của chính app hay của ONNX Runtime/SkiaSharp.
+
+**Nếu gặp lại**: bất kỳ lỗi nào có đặc điểm "chỉ xảy ra ở bản Release, Debug thì bình thường, không crash, không
+log" — nghi `AndroidLinkMode` trước tiên. Kiểm tra nhanh không cần sửa file: build thử với
+`-p:AndroidLinkMode=None` rồi so sánh hành vi với bản hiện tại.
+
+**Đã xác nhận trên máy thật (2026-10-28)**: đổi sang `SdkOnly`, build+cài lại Release, owner tự mở lại đúng item
+từng bị đen màn hình — hiển thị ảnh đúng. Coi `SdkOnly` là mức mặc định cho Release từ nay, không quay lại `Full`
+trừ khi có lý do rõ ràng và test lại kỹ như lần này.
+
+---
+
 ## Đợt 2026-10-27 (đêm, tự động — owner yêu cầu "code xong test kỹ, sáng mai kiểm tra")
 
 ### Đã làm, đã TEST THẬT trên môi trường Android (máy ảo, không phải chỉ build)

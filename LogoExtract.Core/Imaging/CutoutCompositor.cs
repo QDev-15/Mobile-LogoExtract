@@ -8,10 +8,17 @@ namespace LogoExtract.Core.Imaging;
 /// without duplicating the pixel-composite loop.</summary>
 public static class CutoutCompositor
 {
+    // Named once here instead of as a repeated "cutout.png"/"thumb.png" literal at every call site
+    // (ItemStore.MarkSegmented included) -- the on-disk file names and the ItemState transition that claims
+    // they exist must never drift apart.
+    public const string MaskFileName = "mask.png";
+    public const string CutoutFileName = "cutout.png";
+    public const string ThumbFileName = "thumb.png";
+
     public static void WriteMask(SKBitmap mask, string folder)
     {
         using SKData maskData = mask.Encode(SKEncodedImageFormat.Png, 100);
-        using FileStream maskStream = File.Create(Path.Combine(folder, "mask.png"));
+        using FileStream maskStream = File.Create(Path.Combine(folder, MaskFileName));
         maskData.SaveTo(maskStream);
     }
 
@@ -43,12 +50,12 @@ public static class CutoutCompositor
             }
         }
         using (SKData cutoutData = cutout.Encode(SKEncodedImageFormat.Png, 100))
-        using (FileStream cutoutStream = File.Create(Path.Combine(folder, "cutout.png")))
+        using (FileStream cutoutStream = File.Create(Path.Combine(folder, CutoutFileName)))
             cutoutData.SaveTo(cutoutStream);
 
         using SKBitmap thumb = cutout.Resize(new SKImageInfo(320, (int)(320.0 * cutout.Height / cutout.Width)), SKSamplingOptions.Default)!;
         using (SKData thumbData = thumb.Encode(SKEncodedImageFormat.Png, 100))
-        using (FileStream thumbStream = File.Create(Path.Combine(folder, "thumb.png")))
+        using (FileStream thumbStream = File.Create(Path.Combine(folder, ThumbFileName)))
             thumbData.SaveTo(thumbStream);
     }
 

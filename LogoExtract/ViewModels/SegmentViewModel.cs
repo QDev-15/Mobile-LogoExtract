@@ -28,15 +28,11 @@ public partial class SegmentViewModel : ObservableObject
     // result check this counter when it finishes and discard itself instead of overwriting the region-select
     // state the user has since moved into. Owner's report, 2026-10-27: tapping "Chọn vùng" while "Đang tách
     // nền..." was still running did nothing, because StartRegionSelect used to require a non-null _mask that
-    // only existed once segmentation finished.
-    private int _generation;
-
-    // Owner's report, 2026-10-28: a stuck Release build "treo ở trạng thái đang tách nền ... có vẻ nó không có
-    // timeout" -- InferenceSession.Run truly has no cancellation hook (see _generation's own comment), so this
-    // cannot abort the ONNX call itself, but it DOES stop the spinner/IsBusy from waiting on it forever: past
-    // this, the result is discarded (observed via the continuation below so a late fault doesn't become an
-    // unobserved-exception crash) and the user gets an alert with a real way forward (retry, or "Chọn vùng").
-    private static readonly TimeSpan SegmentTimeout = TimeSpan.FromSeconds(30);
+    // only existed once segmentation finished. Same GenerationGuard<string> class ItemsViewModel uses for its own
+    // dashboard overrides (owner's report, 2026-10-28: "không đồng nhất quản lý... khó theo dõi" -- this used to
+    // be a bare int field here and a separate hand-rolled Dictionary over there for the identical rule); keyed by
+    // ItemId even though this page only ever manages one item, so both screens share the exact same type.
+    private readonly GenerationGuard<string> _generation = new();
 
     public SegmentViewModel(ItemStore store, Lazy<ISegmentationService> segmentation, AppDialog dialog, SegmentationCoordinator coordinator)
     {
@@ -201,46 +197,35 @@ public partial class SegmentViewModel : ObservableObject
     {
         if (_image == null) return;
         SKBitmap image = _image;
-        int generation = _generation;
+        int generation = _generation.Current(ItemId);
         IsBusy = true;
         BusyText = "Đang tách nền...";
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        SKBitmap mask;
-        try
+
+        SegmentationRunner.Result result = await SegmentationRunner.RunAsync(() => _segmentation.Value.Segment(image).AlphaMask, "Load");
+        if (result.Outcome == SegmentationRunner.Outcome.TimedOut)
         {
-            Task<SKBitmap> segmentTask = Task.Run(() => BackgroundPriority.RunLowPriority(() => _segmentation.Value.Segment(image).AlphaMask));
-            if (await Task.WhenAny(segmentTask, Task.Delay(SegmentTimeout)) != segmentTask)
+            if (_generation.IsCurrent(ItemId, generation))
             {
-                Android.Util.Log.Error("LogoExtractPerf", $"[Load] segmentation TIMED OUT after {SegmentTimeout.TotalSeconds}s");
-                if (generation == _generation)
-                {
-                    IsBusy = false;
-                    await _dialog.AlertAsync("Quá lâu", "Tách nền mất quá nhiều thời gian. Thử lại hoặc dùng \"Chọn vùng\" để tô tay.");
-                }
-                _ = segmentTask.ContinueWith(ObserveLateFault, TaskScheduler.Default);
-                return;
+                IsBusy = false;
+                await _dialog.AlertAsync("Quá lâu", "Tách nền mất quá nhiều thời gian. Thử lại hoặc dùng \"Chọn vùng\" để tô tay.");
             }
-            mask = await segmentTask;
+            return;
         }
-        catch (Exception ex)
+        if (result.Outcome == SegmentationRunner.Outcome.Failed)
         {
             // Must never leave IsBusy stuck true forever (owner's report, 2026-10-27: a Release/AAB build
-            // installed on a real device "spins as if hung" during segmentation). This Task.Run had no catch, so
-            // a Release-only failure here -- e.g. AndroidLinkMode=Full's IL trimming removing something ONNX
-            // Runtime's C# bindings reach only via reflection, a risk this project's own PdfReader.csproj already
-            // documents for that same setting -- threw unobserved on this fire-and-forget call and silently froze
-            // the busy spinner forever instead of surfacing anything. Logged at Error so a plain
-            // `adb logcat -s LogoExtractPerf:*` catches it instead of needing to scroll past Info noise.
-            Android.Util.Log.Error("LogoExtractPerf", $"[Load] segmentation FAILED: {ex}");
-            if (generation == _generation)
+            // installed on a real device "spins as if hung" during segmentation).
+            if (_generation.IsCurrent(ItemId, generation))
             {
                 IsBusy = false;
                 await _dialog.AlertAsync("Lỗi", "Không thể tách nền. Thử lại hoặc dùng \"Chọn vùng\" để tô tay.");
             }
             return;
         }
+        SKBitmap mask = result.Mask!;
         Android.Util.Log.Info("LogoExtractPerf", $"[Load] segmentation total: {sw.ElapsedMilliseconds}ms");
-        if (generation != _generation)
+        if (!_generation.IsCurrent(ItemId, generation))
         {
             Android.Util.Log.Info("LogoExtractPerf", "[Load] segmentation result discarded -- region-select interrupted it");
             mask.Dispose();
@@ -284,7 +269,7 @@ public partial class SegmentViewModel : ObservableObject
         // Interrupts whatever auto-segment/region-resegment is still running in the background (see _generation's
         // own field comment for why this can only discard that call's eventual result, not actually abort the
         // ONNX inference already in flight) -- region-select takes priority over waiting for it.
-        _generation++;
+        _generation.Bump(ItemId);
         IsBusy = false;
         IsSelectingRegion = true;
         // Editor.Load (below, via ImagesReady) disposes whatever mask it was previously showing -- that is
@@ -328,7 +313,7 @@ public partial class SegmentViewModel : ObservableObject
             return;
         }
 
-        int generation = _generation;
+        int generation = _generation.Current(ItemId);
         IsBusy = true;
         BusyText = "Đang tách theo vùng đã chọn...";
         SKBitmap image = _image;
@@ -336,35 +321,26 @@ public partial class SegmentViewModel : ObservableObject
         // keeps a sliver of surrounding fabric in the crop rather than slicing straight through the logo's own
         // edge if the user's strokes ran a little tight.
         SKRectI cropRect = PadAndClamp(bounds.Value, image.Width, image.Height, 0.20f);
-        SKBitmap newMask;
-        try
+
+        SegmentationRunner.Result result = await SegmentationRunner.RunAsync(() =>
         {
-            Task<SKBitmap> segmentTask = Task.Run(() => BackgroundPriority.RunLowPriority(() =>
+            using SKBitmap cropped = CropBitmap(image, cropRect);
+            using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
+            return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
+        }, "Load");
+        if (result.Outcome == SegmentationRunner.Outcome.TimedOut)
+        {
+            if (_generation.IsCurrent(ItemId, generation))
             {
-                using SKBitmap cropped = CropBitmap(image, cropRect);
-                using SKBitmap croppedMask = _segmentation.Value.Segment(cropped).AlphaMask;
-                return CompositeIntoFullSize(croppedMask, cropRect, image.Width, image.Height);
-            }));
-            // Same timeout reasoning as RunAutoSegmentAsync's own (see SegmentTimeout's field comment).
-            if (await Task.WhenAny(segmentTask, Task.Delay(SegmentTimeout)) != segmentTask)
-            {
-                Android.Util.Log.Error("LogoExtractPerf", $"[Load] region re-segment TIMED OUT after {SegmentTimeout.TotalSeconds}s");
-                if (generation == _generation)
-                {
-                    IsBusy = false;
-                    IsSelectingRegion = false;
-                    await _dialog.AlertAsync("Quá lâu", "Tách theo vùng đã chọn mất quá nhiều thời gian. Thử lại.");
-                }
-                _ = segmentTask.ContinueWith(ObserveLateFault, TaskScheduler.Default);
-                return;
+                IsBusy = false;
+                IsSelectingRegion = false;
+                await _dialog.AlertAsync("Quá lâu", "Tách theo vùng đã chọn mất quá nhiều thời gian. Thử lại.");
             }
-            newMask = await segmentTask;
+            return;
         }
-        catch (Exception ex)
+        if (result.Outcome == SegmentationRunner.Outcome.Failed)
         {
-            // Same never-leave-IsBusy-stuck-forever reasoning as RunAutoSegmentAsync's own catch.
-            Android.Util.Log.Error("LogoExtractPerf", $"[Load] region re-segment FAILED: {ex}");
-            if (generation == _generation)
+            if (_generation.IsCurrent(ItemId, generation))
             {
                 IsBusy = false;
                 IsSelectingRegion = false;
@@ -372,7 +348,8 @@ public partial class SegmentViewModel : ObservableObject
             }
             return;
         }
-        if (generation != _generation) { newMask.Dispose(); return; } // StartRegionSelect fired again before this finished -- see _generation's own comment
+        SKBitmap newMask = result.Mask!;
+        if (!_generation.IsCurrent(ItemId, generation)) { newMask.Dispose(); return; } // StartRegionSelect fired again before this finished -- see _generation's own comment
         IsBusy = false;
         IsSelectingRegion = false;
         _mask?.Dispose();
@@ -412,17 +389,6 @@ public partial class SegmentViewModel : ObservableObject
             Math.Max(0, rect.Top - padY),
             Math.Min(imageWidth, rect.Right + padX),
             Math.Min(imageHeight, rect.Bottom + padY));
-    }
-
-    /// <summary>Attached to a segmentation Task that the UI already gave up on waiting for (see SegmentTimeout's
-    /// field comment) so an eventual fault on it surfaces in logcat instead of crashing the process as an
-    /// unobserved task exception; the (possibly successful) result itself is simply discarded.</summary>
-    private static void ObserveLateFault(Task<SKBitmap> task)
-    {
-        if (task.Exception != null)
-            Android.Util.Log.Error("LogoExtractPerf", $"[Load] late segmentation result after timeout: {task.Exception}");
-        else if (task.IsCompletedSuccessfully)
-            task.Result.Dispose();
     }
 
     private static SKBitmap CloneBitmap(SKBitmap source)
@@ -466,7 +432,7 @@ public partial class SegmentViewModel : ObservableObject
             CutoutCompositor.WriteCutoutAndThumb(_image, editedMask, folder);
         });
 
-        _store.Update(_item.Id, i => i with { State = ItemState.Segmented, CutoutFile = "cutout.png", ThumbFile = "thumb.png" });
+        _store.MarkSegmented(_item.Id);
         IsBusy = false;
         await Shell.Current.GoToAsync($"{nameof(Views.EditPage)}?itemId={_item.Id}");
     }
