@@ -4,8 +4,19 @@
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-permission android:name="android.permission.CAMERA" />
-	<!-- Only needed below API 29: MediaStore writes on 29+ (scoped storage) need no permission at all. -->
-	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+	<!-- Declared WITHOUT maxSdkVersion on purpose, even though MediaStore writes on API 29+ (scoped storage)
+	     don't actually need it: owner's report, 2026-10-29, "có quyền rồi nhưng không mở được" (permission
+	     already granted but it still won't open); on a real Android 12 (API 31) device,
+	     `MediaPicker.CapturePhotoAsync()` threw `Microsoft.Maui.ApplicationModel.PermissionException: You need
+	     to declare using the permission: android.permission.WRITE_EXTERNAL_STORAGE`, confirmed via
+	     `adb logcat`, even though Camera permission was already granted. MediaPickerImplementation.CaptureAsync
+	     unconditionally calls Permissions.StorageWrite.CheckStatusAsync() internally regardless of target/
+	     device API level, and that check's own manifest parsing treats a `maxSdkVersion`-qualified entry as
+	     "not declared" rather than "declared but inert on this API level", throwing instead of just skipping
+	     the check. The actual runtime grant is harmless/no-op on API 29+ (scoped storage ignores it; this app
+	     does not set requestLegacyExternalStorage), so dropping maxSdkVersion only unblocks MAUI's own internal
+	     check; it does not grant the app any broader file access than it already has on a modern device. -->
+	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 	<queries>
 		<intent>
 			<action android:name="android.media.action.IMAGE_CAPTURE" />

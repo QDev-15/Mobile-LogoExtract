@@ -72,14 +72,14 @@ public static class MauiProgram
 		builder.Services.AddSingleton<SegmentationCoordinator>();
 
 		builder.Services.AddTransient<ItemsViewModel>();
-		builder.Services.AddTransient<ImportViewModel>();
+		// ImportViewModel/ImportPage retired (2026-10-29) -- CaptureCommand/PickCommand/ImportOneAsync moved onto
+		// ItemsViewModel itself, driven by HomePage's new inline FAB instead of a separate navigated page.
 		// SegmentViewModel/SegmentPage retired (merged into EditViewModel/EditPage, 2026-10-29) -- EditViewModel
 		// now takes the same services SegmentViewModel used to (Lazy<ISegmentationService>, SegmentationCoordinator)
 		// alongside what it already took (ItemStore, AppDialog).
 		builder.Services.AddTransient<EditViewModel>();
 		builder.Services.AddTransient<SettingsViewModel>();
 		builder.Services.AddTransient<HomePage>();
-		builder.Services.AddTransient<ImportPage>();
 		builder.Services.AddTransient<EditPage>();
 		builder.Services.AddTransient<SettingsPage>();
 		// AboutPage/PrivacyPolicyPage have no ViewModel (plain static/display pages, same shape as PdfReader's

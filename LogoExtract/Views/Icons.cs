@@ -10,6 +10,10 @@ public static class Icons
 
     public const string Edit = "";      // edit -- "Vector hoá"
     public const string Gallery = "";   // photo_library
+    // Codepoint copied verbatim from the sibling PdfReader repo's own Views/Icons.cs (same MaterialIcons-
+    // Regular.ttf) -- same copy-don't-guess convention as Settings/Info/Mail/Phone/ChevronRight below. Added
+    // 2026-10-29 for HomePage's new circular FAB (replaces the old "Nhập ảnh" pill + ImportPage navigation).
+    public const string Add = "";       // add -- HomePage's bottom FAB ("+", rotates to "x" when expanded)
     public const string Share = "";     // share -- "Chia sẻ / Xuất"
     public const string Checked = "";   // check_circle -- "Hoàn thành", "Xong"
     public const string Check = "";     // check -- "Lưu chỉnh màu", "Xác nhận vùng"

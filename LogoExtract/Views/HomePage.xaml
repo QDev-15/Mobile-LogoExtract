@@ -25,24 +25,13 @@
                  IS its own tap target (TapGestureRecognizer directly on it), a stock control's own 44dp-floor
                  style doesn't apply to a bare Border. Icon uses Tertiary in Light theme, not Primary — Primary-
                  as-foreground on this pale Secondary tile measures ~2.5:1 (see Colors.xaml's Tertiary remarks).
-                 Settings added 2026-10-28 as a second same-style icon, placed rightmost/outermost next to Import
-                 — same relative order as DocScanner's own header icon row (Settings is its last/outermost icon
-                 too). Settings uses a plain Tapped code-behind handler, not a Command binding like Import's,
-                 because ItemsViewModel.cs is out of scope this session (an unrelated bug fix landed there) — a
-                 one-off exception to this app's usual Command-first convention, not a new pattern to copy. -->
+                 The header's own "Nhập ảnh" icon (Icons.Gallery, bound to ImportCommand) was REMOVED here
+                 2026-10-29, not repointed at the new FAB: the bottom FAB now owns "add a photo" on its own,
+                 big and centered, and keeping a second same-meaning icon up here would just be two affordances
+                 for one action. Settings is this header's only icon now; same plain Tapped code-behind handler
+                 as before (not a Command binding), kept that way since it predates this change and nothing
+                 about this pass touches it. -->
             <HorizontalStackLayout Grid.Column="1" Spacing="10">
-                <Border WidthRequest="44" HeightRequest="44" StrokeThickness="0"
-                        BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="22" />
-                    </Border.StrokeShape>
-                    <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
-                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
-                           TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ImportCommand}" />
-                    </Border.GestureRecognizers>
-                </Border>
                 <Border WidthRequest="44" HeightRequest="44" StrokeThickness="0"
                         BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}">
                     <Border.StrokeShape>
@@ -68,13 +57,14 @@
                    TextColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource Gray900}}" />
             <Label Text="Chưa có logo nào" FontSize="19" FontAttributes="Bold" HorizontalTextAlignment="Center"
                    TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
-            <Label Text="Bấm nút Nhập ảnh bên dưới để chụp hoặc chọn ảnh áo có logo." HorizontalTextAlignment="Center" FontSize="13"
+            <Label Text="Bấm nút + bên dưới để chụp hoặc chọn ảnh áo có logo." HorizontalTextAlignment="Center" FontSize="13"
                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
         </VerticalStackLayout>
 
-        <!-- Items list -->
+        <!-- Items list. Bottom margin 96, not the old flat 14: reserves clearance so the last row isn't sat on
+             top of by the new floating FAB (added 2026-10-29, see the FAB's own remarks below). -->
         <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" IsVisible="{Binding IsEmpty, Converter={StaticResource InvertedBoolConverter}}"
-                        Margin="16,14">
+                        Margin="16,14,16,96">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ItemRow">
                     <!-- Swipe-right-to-delete (SwipeView, red "Xoá"), the uniform delete gesture across this
@@ -153,35 +143,130 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <!-- Bottom bar: ad banner placeholder + primary CTA pill -->
-        <Grid Grid.Row="2" RowDefinitions="Auto,Auto"
+        <!-- Busy pill (owner's request, 2026-10-29): import used to be its own ImportPage with its own
+             ActivityIndicator; now that Capture/Pick run inline on Home, this top-anchored pill
+             (mobile-app-design.md §5.6 "background progress you don't need to stop for" - lighter-weight than
+             a blocking scrim) is the only on-screen feedback while a multi-photo library pick copies/thumbnails
+             each file, reusing ItemsViewModel's own pre-existing IsBusy/BusyText rather than adding new state.
+             #E61F1F1F is the same dark-pill literal this pattern uses portfolio-wide (not themed - it's a
+             scrim-family color like the dialog overlay's #B3000000, meant to read the same in both themes). -->
+        <Border Grid.Row="1" IsVisible="{Binding IsBusy}" VerticalOptions="Start" HorizontalOptions="Center"
+                Margin="0,14,0,0" Padding="14,8" StrokeThickness="0" BackgroundColor="#E61F1F1F">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="18" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="Black" Opacity="0.25" Radius="10" Offset="0,3" />
+            </Border.Shadow>
+            <HorizontalStackLayout Spacing="8">
+                <ActivityIndicator IsRunning="True" Color="White" WidthRequest="16" HeightRequest="16" />
+                <Label Text="{Binding BusyText}" TextColor="White" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+        </Border>
+
+        <!-- Bottom bar: ad banner only now (2026-10-29) - the old "Nhập ảnh" CTA pill that used to live in this
+             same Grid was replaced by the floating circular FAB below, which deliberately does NOT live inside
+             this Auto-height bar: it needs to float above it (and above the list), and this bar's own height
+             depends on the ad network's actual rendered banner height, which the FAB/reveal-panel anchoring
+             below intentionally doesn't need to know. -->
+        <Grid Grid.Row="2"
               BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
-            <BoxView Grid.Row="0" HeightRequest="0.6" VerticalOptions="Start"
+            <BoxView HeightRequest="0.6" VerticalOptions="Start"
                      Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
-            <ads:AdBannerSurface Grid.Row="0" />
-            <Border Grid.Row="1" Margin="20,12,20,20" HeightRequest="52" StrokeThickness="0"
+            <ads:AdBannerSurface />
+        </Grid>
+
+        <!-- Tap-outside-to-collapse catcher (owner left the exact collapse affordance to this pass' own
+             judgment): fully transparent, only present/hit-testable while the tray is open, sits BELOW the FAB
+             and reveal panel in z-order (added before them) so those two remain tappable on top of it. Does
+             NOT use a dark scrim like AppDialogOverlay's - this is a lightweight speed-dial reveal, not a
+             flow-sensitive modal, so staying visually understated (no dimming) was the deliberate call here. -->
+        <Grid Grid.Row="0" Grid.RowSpan="3" BackgroundColor="Transparent"
+              IsVisible="{Binding IsAddExpanded}" InputTransparent="False">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding ToggleAddCommand}" />
+            </Grid.GestureRecognizers>
+        </Grid>
+
+        <!-- The two revealed actions ("Chụp ảnh" / "Thư viện"), owner's request 2026-10-29: "animation trượt
+             lên rồi 2 button hiện lên... thay vì chuyển sang trang mới". Anchored to Grid.Row="1" +
+             Grid.RowSpan="2" (the list row + the bottom-bar row) with VerticalOptions="End" so it rests right
+             at the bottom bar's own top edge - the shared boundary between a "*" row and an "Auto" row is
+             exactly that edge, however tall the ad banner actually renders, so this never needs to guess the
+             banner's height. Margin bottom 96 = FAB height (64) + FAB's own bottom margin (16) + a 16 gap, so
+             it floats just above the FAB, never over the ad banner. Starts hidden/collapsed (Opacity 0,
+             TranslationY 24 - slightly low, so expanding visibly slides it up into place); HomePage.xaml.cs
+             drives the actual animation off IsAddExpanded, see its own remarks. -->
+        <VerticalStackLayout x:Name="AddActionsPanel" Grid.Row="1" Grid.RowSpan="2"
+                              HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,96" Spacing="10"
+                              Opacity="0" TranslationY="24" IsVisible="False">
+            <Border HeightRequest="48" WidthRequest="224" StrokeThickness="0"
                     BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="26" />
+                    <RoundRectangle CornerRadius="24" />
                 </Border.StrokeShape>
                 <Border.Shadow>
                     <Shadow Brush="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" Opacity="0.35" Radius="14" Offset="0,6" />
                 </Border.Shadow>
                 <Border.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding ImportCommand}" />
+                    <TapGestureRecognizer Command="{Binding CaptureCommand}" />
                 </Border.GestureRecognizers>
-                <!-- PrimaryDarkText in BOTH themes, not White-in-Light (consistency pass, 2026-10-27): White on
-                     Primary (light mint) measures ~2.8:1, well under WCAG AA — this hue's luminance is high
-                     regardless of theme, so the same near-black text that Dark theme already used is correct
-                     for Light too (see Colors.xaml's Tertiary remarks for the full reasoning). -->
+                <!-- PrimaryDarkText in BOTH themes (same WCAG reasoning as the old CTA pill's own remarks:
+                     White-on-Primary fails AA at this brand hue's luminance regardless of theme). -->
                 <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
-                    <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="19"
+                    <Label Text="{x:Static views:Icons.Camera}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
                            VerticalOptions="Center" TextColor="{StaticResource PrimaryDarkText}" />
-                    <Label Text="Nhập ảnh" FontAttributes="Bold" VerticalOptions="Center"
+                    <Label Text="Chụp ảnh" FontAttributes="Bold" VerticalOptions="Center"
                            TextColor="{StaticResource PrimaryDarkText}" />
                 </HorizontalStackLayout>
             </Border>
-        </Grid>
+            <Border HeightRequest="48" WidthRequest="224" StrokeThickness="1.5"
+                    Stroke="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="24" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding PickCommand}" />
+                </Border.GestureRecognizers>
+                <!-- Tertiary in Light theme, not Primary (same reasoning as the old ImportPage's own outlined
+                     button - Primary-as-foreground on this card background measures ~2.6:1, under the 3:1
+                     UI-component floor; see Colors.xaml's Tertiary remarks). -->
+                <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8">
+                    <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                           VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    <Label Text="Thư viện" FontAttributes="Bold" VerticalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                </HorizontalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+
+        <!-- The FAB itself (owner's request, 2026-10-29: "nút nhập chuyển thành icon add (dấu +) icon tròn to
+             có hiệu ứng nổi căn giữa"): same RowSpan anchoring as the reveal panel above, so it floats centered
+             just above the ad banner regardless of the banner's real height, with the same colored-glow shadow
+             language the old CTA pill used (mobile-app-design.md §4.3 "Colored glow" row). FabIcon rotates
+             45° (+ -> x) on expand in HomePage.xaml.cs, so the FAB's own glyph signals its toggled state too,
+             not just the panel's presence (never encode a meaningful state in position/color alone). -->
+        <Border Grid.Row="1" Grid.RowSpan="2" HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,16"
+                WidthRequest="64" HeightRequest="64" StrokeThickness="0"
+                BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                SemanticProperties.Description="Thêm ảnh mới">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="32" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" Opacity="0.4" Radius="16" Offset="0,8" />
+            </Border.Shadow>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding ToggleAddCommand}" />
+            </Border.GestureRecognizers>
+            <Label x:Name="FabIcon" Text="{x:Static views:Icons.Add}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="28"
+                   HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
+                   TextColor="{StaticResource PrimaryDarkText}" />
+        </Border>
 
         <!-- Confirm-delete dialog overlay (added 2026-10-27) — stacked on top of every row above via RowSpan,
              per mobile-app-design.md §5.5. HomePage's own OnBackButtonPressed dismisses this first before its

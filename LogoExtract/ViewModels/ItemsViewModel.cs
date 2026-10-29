@@ -118,8 +118,129 @@ public partial class ItemsViewModel : ObservableObject
         IsEmpty = Items.Count == 0;
     }
 
+    [ObservableProperty]
+    private bool isAddExpanded;
+
+    // Drives the new FAB's expand/collapse state (owner's request, 2026-10-29: "nút nhập chuyển thành icon add
+    // (dấu +) ... animation trượt lên rồi 2 button hiện lên" -- replaces the old full-page ImportPage navigation
+    // entirely, per the owner's explicit "bỏ trang import cũ"). The actual slide-up/fade/icon-rotate animation
+    // lives in HomePage.xaml.cs (a View concern -- ViewExtensions.TranslateTo/FadeTo act on a real View), driven
+    // off this plain bool via PropertyChanged; see that file's own remarks.
     [RelayCommand]
-    private async Task ImportAsync() => await Shell.Current.GoToAsync(nameof(Views.ImportPage));
+    private void ToggleAdd() => IsAddExpanded = !IsAddExpanded;
+
+    // Moved here verbatim from the now-retired ImportViewModel/ImportPage (2026-10-29 FAB redesign) -- the FAB's
+    // two revealed buttons run these directly instead of navigating to a separate page. Both collapse the FAB
+    // tray immediately: the camera/photo-picker UI is about to cover the screen anyway, so there's nothing to
+    // gain by leaving the tray open underneath it.
+    [RelayCommand]
+    private async Task CaptureAsync()
+    {
+        IsAddExpanded = false;
+        if (!MediaPicker.Default.IsCaptureSupported)
+        {
+            await _dialog.AlertAsync("Không dùng được máy ảnh", "Thiết bị này không hỗ trợ chụp ảnh trực tiếp.", "Đóng");
+            return;
+        }
+        FileResult? photo;
+        try
+        {
+            // Owner's report, 2026-10-29: "không mở được camera để chụp ảnh" -- CapturePhotoAsync had no catch
+            // here at all, so ANY failure (CAMERA permission denied/revoked, no default camera app resolving
+            // the ACTION_IMAGE_CAPTURE intent -- common on emulators with no Camera app installed, a
+            // FileProvider/Activity-result hiccup, ...) threw unobserved and the button just silently did
+            // nothing from the owner's own perspective -- no camera UI, no error, no visible reaction at all.
+            // Same never-fail-silently shape as every other AppDialog-wrapped call site added this session.
+            // Kept intact verbatim across the ImportViewModel -> ItemsViewModel move (2026-10-29).
+            photo = await MediaPicker.Default.CapturePhotoAsync();
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error("LogoExtractPerf", $"[Home] CapturePhotoAsync FAILED: {ex}");
+            // Owner's report, 2026-10-29, as a direct follow-up to the above catch's own first fix: the failure
+            // here is specifically a denied CAMERA permission. Once Android's own permission prompt has been
+            // denied (especially a second time), the OS stops re-showing it to the app entirely -- there is no
+            // in-app API to re-trigger that system dialog, the only way forward is the app's own OS settings
+            // screen. "Mở Cài đặt" jumps straight there (AppInfo.Current.ShowSettingsUI(), same pattern
+            // DocScanner's PermissionService already uses) instead of just telling the owner to go find it
+            // themselves in Android's own Settings app.
+            bool openSettings = await _dialog.ConfirmAsync("Không mở được máy ảnh",
+                "Chưa có quyền dùng Camera. Mở Cài đặt để cấp quyền, hoặc thử \"Thư viện\" thay thế.",
+                "Mở Cài đặt", "Để sau");
+            if (openSettings) AppInfo.Current.ShowSettingsUI();
+            return;
+        }
+        if (photo == null) return;
+        IsBusy = true;
+        BusyText = "Đang nhập ảnh...";
+        try { await ImportOneAsync(photo); }
+        finally { IsBusy = false; }
+        Refresh();
+    }
+
+    [RelayCommand]
+    private async Task PickAsync()
+    {
+        IsAddExpanded = false;
+        IReadOnlyList<FileResult> photos = await MediaPicker.Default.PickPhotosAsync(new MediaPickerOptions { Title = "Chọn ảnh áo có logo" });
+        if (photos.Count == 0) return;
+        IsBusy = true;
+        BusyText = photos.Count > 1 ? $"Đang nhập {photos.Count} ảnh..." : "Đang nhập ảnh...";
+        try
+        {
+            string batchName = photos.Count > 1 ? $"Nhập {DateTime.Now:dd/MM/yyyy HH:mm} ({photos.Count} ảnh)" : $"Nhập {DateTime.Now:dd/MM/yyyy HH:mm}";
+            BatchGroup batch = _store.CreateBatch(batchName);
+            foreach (FileResult photo in photos)
+                await ImportOneAsync(photo, batch.Id);
+        }
+        finally { IsBusy = false; }
+        Refresh();
+    }
+
+    // Moved here verbatim from ImportViewModel (2026-10-29) -- creates the LogoItem, copies the file, enqueues
+    // background segmentation, and generates a thumbnail. Same behavior/comments as before the move.
+    private async Task ImportOneAsync(FileResult photo, string? batchId = null)
+    {
+        batchId ??= _store.CreateBatch($"Nhập {DateTime.Now:dd/MM/yyyy HH:mm}").Id;
+        string name = Path.GetFileNameWithoutExtension(photo.FileName);
+        LogoItem item = _store.Create(batchId, name.Length > 0 ? name : "Ảnh mới", "original" + Path.GetExtension(photo.FullPath));
+        string folder = _store.ItemFolder(item.Id);
+        string dest = Path.Combine(folder, item.OriginalFile);
+        using (Stream source = await photo.OpenReadAsync())
+        using (FileStream destStream = File.Create(dest))
+            await source.CopyToAsync(destStream);
+
+        // Start segmentation right away, in the background -- NOT awaited, so this import (and a possible
+        // multi-photo PickAsync loop around it) never waits on the model. Owner's report, 2026-10-28: before
+        // this, nothing ever ran segmentation until the user opened the segment/edit screen for this specific item, so
+        // Home's "Đang tách nền" badge on a freshly-imported item was never actually true until then.
+        _coordinator.EnqueueIfNeeded(item.Id);
+
+        // A lightweight thumbnail right away, not only after segmentation finishes (review 2026-10-27): without
+        // this, ItemRow.ThumbPath fell back to the ORIGINAL file for any item still in the "Imported" state --
+        // a CollectionView decoding full-resolution camera photos (routinely several MB each) just to show a
+        // 64x64 row icon, for every item in a freshly-imported batch. Runs on a background thread; a thumbnail
+        // failure must never fail the import itself (the item is still usable, just shows the full photo as its
+        // thumbnail until segmentation runs), hence the broad catch.
+        try
+        {
+            await Task.Run(() =>
+            {
+                using SKBitmap full = ExifOrientation.DecodeOriented(dest);
+                int thumbHeight = (int)(320.0 * full.Height / full.Width);
+                using SKBitmap? thumb = full.Resize(new SKImageInfo(320, Math.Max(thumbHeight, 1)), SKSamplingOptions.Default);
+                if (thumb == null) return;
+                using SKData data = thumb.Encode(SKEncodedImageFormat.Png, 90);
+                using FileStream stream = File.Create(Path.Combine(folder, CutoutCompositor.ThumbFileName));
+                data.SaveTo(stream);
+            });
+            _store.Update(item.Id, i => i with { ThumbFile = CutoutCompositor.ThumbFileName });
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            // Decode/resize failure on a weird input file: leave ThumbFile null, not fatal to the import.
+        }
+    }
 
     // Goes straight to the merged "Chỉnh sửa" screen (owner's request, 2026-10-29: "ở Home khi chọn 1 item sẽ
     // chuyển sang màn hình chỉnh sửa ngay") -- SegmentPage is retired; EditPage now runs/shows segmentation

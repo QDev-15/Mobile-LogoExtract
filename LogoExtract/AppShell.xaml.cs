@@ -7,7 +7,8 @@ public partial class AppShell : Shell
 	public AppShell()
 	{
 		InitializeComponent();
-		Routing.RegisterRoute(nameof(ImportPage), typeof(ImportPage));
+		// ImportPage/ImportViewModel retired (2026-10-29) -- Home's new FAB runs CaptureCommand/PickCommand
+		// (moved onto ItemsViewModel) directly, with an inline slide-up reveal instead of a navigated page.
 		// SegmentPage retired (merged into EditPage, 2026-10-29) -- Home now navigates straight to EditPage,
 		// which both runs/shows segmentation progress and does color-adjust/vectorize/export.
 		Routing.RegisterRoute(nameof(EditPage), typeof(EditPage));
