@@ -11,6 +11,14 @@ public partial class EditPage : ContentPage
 {
     private readonly EditViewModel _vm;
     private readonly AppDialog _dialog;
+    // Owner's request, 2026-10-29, "tránh nhiều action cùng chạy rồi loạn app gây crash": OnDone/OnConfirmRegion
+    // are plain code-behind `async void` handlers, not [RelayCommand]s, so they can't use
+    // CommunityToolkit.Mvvm's own AllowConcurrentExecutions guard (see EditViewModel's RelayCommand methods for
+    // that pattern) -- this is the same protection by hand. Specifically needed for OnConfirmRegion: "Xác nhận
+    // vùng" is deliberately NOT IsEnabled-gated on IsBusy (EditViewModel's own class doc comment: it must stay
+    // reachable while busy, same as "Chọn vùng"), so nothing else stops a fast double-tap from calling
+    // ConfirmRegionSelectAsync twice concurrently, both racing to crop+segment+write the same files.
+    private bool _actionInFlight;
 
     // Cycle order/labels for the preview-background chip (unchanged from before this merge).
     private static readonly (PreviewBackgroundKind Kind, string Label)[] PreviewBackgrounds =
@@ -53,18 +61,24 @@ public partial class EditPage : ContentPage
 
     private async void OnDone(object? sender, EventArgs e)
     {
+        if (_actionInFlight) return;
         SKBitmap? mask = Editor.CurrentMask;
         if (mask == null) return;
-        await _vm.SaveMaskAsync(mask);
+        _actionInFlight = true;
+        try { await _vm.SaveMaskAsync(mask); }
+        finally { _actionInFlight = false; }
     }
 
     private void OnCancelRegion(object? sender, EventArgs e) => _vm.CancelRegionSelect();
 
     private async void OnConfirmRegion(object? sender, EventArgs e)
     {
+        if (_actionInFlight) return;
         SKBitmap? selection = Editor.CurrentMask;
         if (selection == null) return;
-        await _vm.ConfirmRegionSelectAsync(selection);
+        _actionInFlight = true;
+        try { await _vm.ConfirmRegionSelectAsync(selection); }
+        finally { _actionInFlight = false; }
     }
 
     // Local UI-only state (not persisted, not ViewModel-bound) -- same shape as OnAddMode/OnRemoveMode above.

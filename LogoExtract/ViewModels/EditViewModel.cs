@@ -505,7 +505,12 @@ public partial class EditViewModel : ObservableObject
     [RelayCommand]
     private void ResetSaturation() => Saturation = 0;
 
-    [RelayCommand]
+    // AllowConcurrentExecutions = false (owner's request, 2026-10-29, "tránh nhiều action cùng chạy rồi loạn app
+    // gây crash"): a double-tap here would otherwise run two concurrent vectorize passes writing the SAME
+    // vector.svg file. This bottom-toolbar button is already IsEnabled-gated on !IsBusy in EditPage.xaml, so
+    // this is a second, code-level line of defense against the brief window before that binding visually
+    // catches up, not the only protection.
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task VectorizeAsync()
     {
         if (_item?.CutoutFile == null || _cutout == null) return;
@@ -538,7 +543,7 @@ public partial class EditViewModel : ObservableObject
             "Đóng");
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task SaveToGalleryAsync()
     {
         PersistColorAdjust();
@@ -570,7 +575,8 @@ public partial class EditViewModel : ObservableObject
             "Đóng");
     }
 
-    [RelayCommand]
+    // AllowConcurrentExecutions = false: a double-tap otherwise launches two overlapping Share.Default sheets.
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task ExportAsync()
     {
         if (_item == null) return;
@@ -598,7 +604,9 @@ public partial class EditViewModel : ObservableObject
     /// <summary>Pops the whole navigation stack back to the dashboard in one step -- owner's existing request,
     /// unchanged. Commits the current color edit first (see PersistColorAdjust's own remarks), same as every
     /// other bottom-toolbar action.</summary>
-    [RelayCommand]
+    // AllowConcurrentExecutions = false: double-tapping "Hoàn thành" must not fire a second concurrent
+    // Shell.GoToAsync("//HomePage") while the first is still unwinding the stack.
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task FinishAsync()
     {
         PersistColorAdjust();

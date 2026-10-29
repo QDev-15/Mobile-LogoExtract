@@ -37,6 +37,10 @@
             <Setter Property="FontSize" Value="14.5" />
             <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
         </Style>
+        <Style x:Key="Hint" TargetType="Label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+        </Style>
     </ContentPage.Resources>
 
     <ScrollView>
@@ -67,6 +71,67 @@
                         <Label Grid.Column="1" Text="{x:Static views:Icons.ChevronRight}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="20"
                                VerticalOptions="Center"
                                TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Segmentation execution provider (owner's request, 2026-10-29, "setting dùng 1 trong 2 ... user
+                 có thể chỉnh được trong setting"): Tự động follows SegmentationProviderResolver's own cached
+                 on-device benchmark (CPU vs NNAPI, whichever measured faster); Chỉ CPU / NNAPI force one
+                 regardless of that result, for an owner who wants to override it. Same row/checkmark pattern as
+                 any radio-style choice elsewhere in this portfolio; IsVisible on the trailing Icons.Checked
+                 glyph instead of a separate RadioButton control, matching this card's existing chevron-row look. -->
+            <Label Text="HIỆU NĂNG TÁCH NỀN" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <Label Text="{Binding BenchmarkText}" Style="{StaticResource Hint}" Padding="0,10,0,8" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetSegmentationAutoCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Tự động (khuyến nghị)" Style="{StaticResource RowName}" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.Checked}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                               VerticalOptions="Center" IsVisible="{Binding IsSegmentationAuto}"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    </Grid>
+                    <BoxView HeightRequest="0.6" Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetSegmentationCpuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Chỉ CPU" Style="{StaticResource RowName}" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.Checked}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                               VerticalOptions="Center" IsVisible="{Binding IsSegmentationCpu}"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    </Grid>
+                    <BoxView HeightRequest="0.6" Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetSegmentationNnapiCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="NNAPI (GPU/NPU)" Style="{StaticResource RowName}" VerticalOptions="Center" />
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.Checked}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                               VerticalOptions="Center" IsVisible="{Binding IsSegmentationNnapi}"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    </Grid>
+                    <BoxView HeightRequest="0.6" Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding RemeasureSpeedCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="Đo lại tốc độ" Style="{StaticResource RowName}" VerticalOptions="Center"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                               IsVisible="{Binding IsBenchmarking, Converter={StaticResource InvertedBoolConverter}}" />
+                        <ActivityIndicator Grid.Column="0" HorizontalOptions="Start" WidthRequest="18" HeightRequest="18"
+                                            IsRunning="{Binding IsBenchmarking}" IsVisible="{Binding IsBenchmarking}"
+                                            Color="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
                     </Grid>
                 </VerticalStackLayout>
             </Border>

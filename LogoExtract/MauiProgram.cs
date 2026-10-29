@@ -52,11 +52,19 @@ public static class MauiProgram
 			// Android.Util.Log.Info used here instead for that reason alone, not a style preference.
 			Android.Util.Log.Info("LogoExtractPerf", "[U2Net] Lazy<ISegmentationService> factory starting");
 			var sw = System.Diagnostics.Stopwatch.StartNew();
-			string modelPath = EnsureModelCopied();
+			string modelPath = SegmentationProviderResolver.EnsureModelCopied();
 			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] EnsureModelCopied: {sw.ElapsedMilliseconds}ms");
 			sw.Restart();
-			var service = new U2NetSegmentationService(modelPath);
-			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] new InferenceSession: {sw.ElapsedMilliseconds}ms");
+			// Owner's request, 2026-10-29: pick Cpu vs Nnapi per-device (benchmarked once and cached, or the
+			// owner's own override from Settings) instead of hardcoding one -- see
+			// SegmentationProviderResolver's own doc comment for why neither is safe to assume universally
+			// faster. On a first-ever resolve with no cached benchmark yet, this runs that benchmark inline
+			// (two real ONNX sessions, synthetic input) before returning, which is why this whole factory
+			// already assumes real I/O+CPU cost and defers to the first .Value access off the UI thread (see
+			// this field's own comment above).
+			SegmentationProvider provider = SegmentationProviderResolver.Resolve(modelPath);
+			var service = new U2NetSegmentationService(modelPath, provider);
+			Android.Util.Log.Info("LogoExtractPerf", $"[U2Net] new InferenceSession ({provider}): {sw.ElapsedMilliseconds}ms");
 			return service;
 		}));
 
@@ -93,20 +101,5 @@ public static class MauiProgram
 
 		MauiApp app = builder.Build();
 		return app;
-	}
-
-	/// <summary>Raw assets (Resources/Raw) ship inside the APK, not as a plain file on disk -- ONNX Runtime's
-	/// InferenceSession needs an actual file path (or a byte[], not used here to keep this one-line simple), so
-	/// the model is copied to AppDataDirectory once on first run and reused after that.</summary>
-	private static string EnsureModelCopied()
-	{
-		string dest = Path.Combine(FileSystem.AppDataDirectory, "u2netp.onnx");
-		if (!File.Exists(dest))
-		{
-			using Stream source = FileSystem.OpenAppPackageFileAsync("Models/u2netp.onnx").GetAwaiter().GetResult();
-			using FileStream destStream = File.Create(dest);
-			source.CopyTo(destStream);
-		}
-		return dest;
 	}
 }

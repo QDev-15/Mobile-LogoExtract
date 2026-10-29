@@ -19,7 +19,35 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
 
     private readonly InferenceSession _session;
 
-    public U2NetSegmentationService(string modelPath)
+    public U2NetSegmentationService(string modelPath, SegmentationProvider provider)
+    {
+        SessionOptions options = BuildSessionOptions(provider);
+        var sw = Stopwatch.StartNew();
+        _session = new InferenceSession(modelPath, options);
+        Console.WriteLine($"[U2Net] InferenceSession ctor ({provider}): {sw.ElapsedMilliseconds}ms");
+    }
+
+    /// <summary>Builds a session with the given provider, runs ONE inference on a synthetic (zero-filled, no
+    /// real photo needed) input, times just <c>session.Run</c>, and disposes the session -- used by
+    /// <c>LogoExtract.Services.SegmentationProviderResolver</c> to benchmark Cpu vs Nnapi once on first real use
+    /// and cache whichever measured faster (owner's request, 2026-10-29: "khi cài app, app sẽ đánh giá hệ thống
+    /// rồi recommend dùng phương án nào"). Timing depends on the model GRAPH's own partitioning/execution, not
+    /// the pixel VALUES, so a synthetic tensor gives a representative number without needing a decoded photo.</summary>
+    public static long BenchmarkSessionRunMs(string modelPath, SegmentationProvider provider)
+    {
+        SessionOptions options = BuildSessionOptions(provider);
+        using var session = new InferenceSession(modelPath, options);
+        var input = new DenseTensor<float>([1, 3, InputSize, InputSize]);
+        string inputName = session.InputMetadata.Keys.First();
+        var sw = Stopwatch.StartNew();
+        using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> outputs =
+            session.Run([NamedOnnxValue.CreateFromTensor(inputName, input)]);
+        long ms = sw.ElapsedMilliseconds;
+        Console.WriteLine($"[U2Net] benchmark session.Run ({provider}): {ms}ms");
+        return ms;
+    }
+
+    private static SessionOptions BuildSessionOptions(SegmentationProvider provider)
     {
         // Owner's report, 2026-10-28, on a real device (Samsung Note10+, 8 cores): the WHOLE PHONE felt stuck
         // during segmentation, not just this app -- `adb shell dumpsys gfxinfo` during a run showed "Number
@@ -35,11 +63,45 @@ public sealed class U2NetSegmentationService : ISegmentationService, IDisposable
         // left the whole system's input dispatch badly starved (thousands of "High input latency" events in
         // `dumpsys gfxinfo` during one run) -- see BackgroundPriority's own remarks for the other half of this
         // fix (OS thread priority), which matters more than this number once the call is already sequential.
+        // Applies to BOTH providers below, Cpu and Nnapi -- NNAPI still runs whatever fraction of the graph it
+        // can't/won't accelerate through this same capped CPU EP (see the per-partition fallback note below).
         var options = new SessionOptions { IntraOpNumThreads = 1, InterOpNumThreads = 1 };
         Console.WriteLine($"[U2Net] SessionOptions: IntraOpNumThreads={options.IntraOpNumThreads}, InterOpNumThreads={options.InterOpNumThreads}");
-        var sw = Stopwatch.StartNew();
-        _session = new InferenceSession(modelPath, options);
-        Console.WriteLine($"[U2Net] InferenceSession ctor: {sw.ElapsedMilliseconds}ms");
+
+        if (provider == SegmentationProvider.Nnapi)
+        {
+            // Owner's request, 2026-10-29, "tối ưu hoá tốc độ ... thử NNAPI/GPU trước": NNAPI is Android's own
+            // on-device NN accelerator API -- the closest thing to "GPU" ONNX Runtime's standard Android build
+            // exposes here, there is no separate GPU EP in it (see the XA0141 build warning on
+            // libonnxruntime4j_jni.so, already known from this project's own build log). Appended as an
+            // ADDITIONAL execution provider, not a replacement for the CPU one above: ORT partitions the graph
+            // per-op, so any op NNAPI's driver can't/won't accelerate on this device falls back to the CPU EP
+            // automatically, same session, same Segment() call site.
+            // NNAPI_FLAG_USE_FP16: this model's own doc comment already notes its mask is a first-pass
+            // suggestion upscaled with bilinear interpolation, not meant to be pixel-perfect -- that existing
+            // tolerance for imprecision is exactly what FP16 relaxation trades for speed, and it also unlocks
+            // hardware backends that reject full FP32 graphs on some devices.
+            // MEASURED, 2026-10-29: on-device A/B (`adb logcat`, same device, same two photos, right after each
+            // other) found NNAPI ~2.4x SLOWER than Cpu here -- its own `GetCapability` log showed the graph
+            // split into 67 separate partitions (300-442 of 371-513 nodes went to NNAPI, the rest stayed CPU),
+            // and `session.Run` measured 5524-5658ms with NNAPI vs. 2247-2300ms Cpu-only on the SAME
+            // device/photos. That is exactly WHY this is no longer hardcoded one way: NNAPI driver quality
+            // varies enough by SoC vendor that it can plausibly win on different hardware, hence benchmarking
+            // per-device (SegmentationProviderResolver) instead of assuming either is universally faster.
+            try
+            {
+                options.AppendExecutionProvider_Nnapi(NnapiFlags.NNAPI_FLAG_USE_FP16);
+            }
+            catch (Exception ex)
+            {
+                // NNAPI only exists from Android 8.1 (API 27) -- this app's own minSdk is 26 -- and some real
+                // devices have no NNAPI driver at all; AppendExecutionProvider_Nnapi throws on a genuinely
+                // unsupported platform rather than silently no-op'ing, so CPU-only (already configured above)
+                // is this catch's fallback, not a hard failure.
+                Console.WriteLine($"[U2Net] NNAPI unavailable, staying CPU-only: {ex.Message}");
+            }
+        }
+        return options;
     }
 
     public SegmentationResult Segment(SKBitmap image)

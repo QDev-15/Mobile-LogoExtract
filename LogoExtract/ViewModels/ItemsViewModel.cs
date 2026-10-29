@@ -133,7 +133,12 @@ public partial class ItemsViewModel : ObservableObject
     // two revealed buttons run these directly instead of navigating to a separate page. Both collapse the FAB
     // tray immediately: the camera/photo-picker UI is about to cover the screen anyway, so there's nothing to
     // gain by leaving the tray open underneath it.
-    [RelayCommand]
+    // AllowConcurrentExecutions = false (owner's request, 2026-10-29, "tránh nhiều action cùng chạy rồi loạn app
+    // gây crash"): CommunityToolkit.Mvvm's own built-in re-entrancy guard on the generated AsyncRelayCommand --
+    // a second tap while THIS SAME command is still running is simply ignored, instead of a hand-rolled
+    // shared IsBusy check at the top of every method (which would also wrongly block unrelated commands on this
+    // same ViewModel, like opening or deleting a completely different item).
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task CaptureAsync()
     {
         IsAddExpanded = false;
@@ -178,7 +183,7 @@ public partial class ItemsViewModel : ObservableObject
         Refresh();
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task PickAsync()
     {
         IsAddExpanded = false;
@@ -245,13 +250,19 @@ public partial class ItemsViewModel : ObservableObject
     // Goes straight to the merged "Chỉnh sửa" screen (owner's request, 2026-10-29: "ở Home khi chọn 1 item sẽ
     // chuyển sang màn hình chỉnh sửa ngay") -- SegmentPage is retired; EditPage now runs/shows segmentation
     // progress itself before falling into color-adjust mode.
-    [RelayCommand]
+    // AllowConcurrentExecutions = false: a fast double-tap on the same row must not push EditPage onto the
+    // Shell navigation stack twice (a real MAUI Shell gotcha, not hypothetical -- GoToAsync has no built-in
+    // re-entrancy guard of its own).
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task OpenAsync(ItemRow row) => await Shell.Current.GoToAsync($"{nameof(Views.EditPage)}?itemId={row.Record.Id}");
 
     // Was an instant delete on tap -- the one destructive action in this app with no confirmation at all
     // (consistency pass, 2026-10-27). Same shape as every other app's delete-confirm: AppDialog.ConfirmAsync,
     // destructive: true turns the accept button the portfolio-wide #D32F2F, never deletes until accepted.
-    [RelayCommand]
+    // AllowConcurrentExecutions = false: ItemStore.Delete is itself idempotent (checks Directory.Exists first,
+    // see its own comment), so a double-tap here was never a crash risk -- this just stops two confirm dialogs
+    // from stacking on top of each other if the owner taps twice before the first one's dialog even renders.
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task DeleteAsync(ItemRow row)
     {
         bool ok = await _dialog.ConfirmAsync("Xoá mục này?", $"Xoá \"{row.Name}\"? Không thể hoàn tác.", "Xoá", "Huỷ", destructive: true);
@@ -266,7 +277,11 @@ public partial class ItemsViewModel : ObservableObject
     /// removed) the user can brush down by hand later in EditPage's "Chỉnh sửa" sub-toolbar, same as any other mask. From any later
     /// state, sends the item back to Imported and immediately re-runs the real model, same as the owner asked:
     /// "nếu ở trạng thái hoàn thành mà chuyển thành trạng thái tách nền thì sẽ tự động tách nền".</summary>
-    [RelayCommand]
+    // AllowConcurrentExecutions = false: MarkCompleteAsync/RetrySegmentationAsync already serialize against the
+    // SegmentationCoordinator's own per-item lock (TryBeginExternalRun) once they get there, but that check
+    // happens AFTER the confirm dialog -- without this, a fast double-tap could stack two confirm dialogs for
+    // the SAME row before either one resolves.
+    [RelayCommand(AllowConcurrentExecutions = false)]
     private async Task ToggleStateAsync(ItemRow row)
     {
         if (row.IsStuckState) await MarkCompleteAsync(row.Record);
