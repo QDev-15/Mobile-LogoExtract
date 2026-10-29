@@ -1,5 +1,6 @@
 ﻿using LogoExtract.AdsService;
 using LogoExtract.Core;
+using LogoExtract.Core.Licensing;
 using LogoExtract.Core.Segmentation;
 using LogoExtract.Services;
 using LogoExtract.ViewModels;
@@ -72,6 +73,12 @@ public static class MauiProgram
 		// binds to this SAME instance (mobile-app-design.md §5.5), so there is only ever one confirm/alert on
 		// screen regardless of which page triggered it.
 		builder.Services.AddSingleton<AppDialog>();
+
+		// Singleton: owner's request, 2026-10-29, "thêm chức năng mua bản quyền mua pro giống như các app khác"
+		// -- same Plugin.InAppBilling-backed pattern as the sibling PdfReader/Minesweeper apps' own
+		// ILicenseService. App's own constructor wires this to IAdsClient.AreAdsEnabled (see that file's own
+		// comment) so a Pro purchase actually hides the ad banner, not just flips a flag nothing reads.
+		builder.Services.AddSingleton<ILicenseService, LicenseService>();
 
 		// Singleton: its own background worker loop must outlive any one page (ImportViewModel enqueues a
 		// background segmentation run and immediately navigates away; the run has to keep going after that

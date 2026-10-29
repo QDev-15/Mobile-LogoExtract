@@ -1,11 +1,13 @@
-﻿using LogoExtract.Services;
+﻿using LogoExtract.AdsService;
+using LogoExtract.Core.Licensing;
+using LogoExtract.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LogoExtract;
 
 public partial class App : Application
 {
-	public App()
+	public App(ILicenseService license, IAdsClient ads)
 	{
 		InitializeComponent();
 		// Light is the app's default theme regardless of the device's own system theme (owner's explicit
@@ -22,6 +24,17 @@ public partial class App : Application
 		// SegmentationProviderResolver.WarmUpInBackground's own doc comment) and is itself fire-and-forget on a
 		// background thread, so it adds zero latency to app startup/the splash sequence either way.
 		_ = Task.Run(SegmentationProviderResolver.WarmUpInBackground);
+
+		// Owner's request, 2026-10-29, "thêm chức năng mua bản quyền mua pro giống như các app khác": the single
+		// place that connects ILicenseService (pure Play Billing/Pro-status concern) to IAdsClient.AreAdsEnabled
+		// (pure "should the banner show" concern) -- IAdsClient's own doc comment deliberately keeps it unaware
+		// of what "Pro" even means, so this composition has to happen somewhere in the app layer, not inside
+		// either service. Set once immediately from License's locally-cached (instant, no network) guess so the
+		// very first frame is already correct for a returning Pro owner, then kept live via Changed for the
+		// moment a purchase/restore/refresh actually completes.
+		ads.AreAdsEnabled = !license.State.IsPro;
+		license.Changed += () => MainThread.BeginInvokeOnMainThread(() => ads.AreAdsEnabled = !license.State.IsPro);
+		_ = license.RefreshAsync(); // re-verify with Play on every launch (e.g. a purchase made on another device)
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)

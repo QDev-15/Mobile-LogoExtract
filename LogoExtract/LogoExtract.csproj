@@ -117,6 +117,9 @@
 		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
 		<!-- MIT: SKCanvasView for Views/MaskEditorView.cs's raw-SkiaSharp touch-paint brush tool. -->
 		<PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="3.116.1" />
+		<!-- MIT: Play Billing wrapper for the Pro unlock (Services/LicenseService.cs), same package/version the
+		     sibling PdfReader/Minesweeper apps already use for their own identical "Mua Pro" setup. -->
+		<PackageReference Include="Plugin.InAppBilling" Version="10.0.0" />
 		<!-- NU1107 version conflict: SkiaSharp.Views.Maui.Controls (via Microsoft.Maui.Core) wants 2.9.2.1,
 		     LogoExtract.AdsService.LevelPlay (via GooglePlayServices.Basement -> AndroidX.Fragment) wants
 		     2.11.0.1; pin to the higher one directly as NU1107 itself suggested. -->

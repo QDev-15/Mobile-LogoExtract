@@ -9,8 +9,8 @@ namespace LogoExtract;
 /// </summary>
 public static class RealAdsConfig
 {
-    public const string BannerAdUnitId = "REPLACE_ME_BANNER_AD_UNIT_ID";
-    public const string InterstitialAdUnitId = "REPLACE_ME_INTERSTITIAL_AD_UNIT_ID";
+    public const string BannerAdUnitId = "m88tg202d2vxj6fl";
+    public const string InterstitialAdUnitId = "k7dtg04ni0zoddal";
 
     public static bool HasRealIds => !BannerAdUnitId.Contains("REPLACE_ME") && !InterstitialAdUnitId.Contains("REPLACE_ME")
         && BannerAdUnitId.Length > 0 && InterstitialAdUnitId.Length > 0;

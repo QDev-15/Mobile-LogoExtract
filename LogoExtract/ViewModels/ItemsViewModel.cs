@@ -313,6 +313,7 @@ public partial class ItemsViewModel : ObservableObject
         Refresh(); // so the row's badge reflects isProcessing=true right away, same as RetrySegmentationAsync's own Refresh() below
         string folder = _store.ItemFolder(item.Id);
         string path = Path.Combine(folder, item.OriginalFile);
+        EdgeTreatment edgeTreatment = EdgeTreatmentResolver.Current;
         try
         {
             await Task.Run(() =>
@@ -320,7 +321,7 @@ public partial class ItemsViewModel : ObservableObject
                 using SKBitmap image = ExifOrientation.DecodeOriented(path);
                 using SKBitmap mask = CutoutCompositor.CreateFullKeepMask(image.Width, image.Height);
                 CutoutCompositor.WriteMask(mask, folder);
-                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder);
+                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder, edgeTreatment);
             });
             // A newer tap on this same item (either button) already took over -- don't stomp its result.
             if (_generation.IsCurrent(item.Id, generation)) _store.MarkSegmented(item.Id);
@@ -415,10 +416,11 @@ public partial class ItemsViewModel : ObservableObject
             }
             using SKBitmap mask = result.Mask!;
             if (!_generation.IsCurrent(item.Id, generation)) return; // superseded while the model call was running
+            EdgeTreatment edgeTreatment = EdgeTreatmentResolver.Current;
             await Task.Run(() =>
             {
                 CutoutCompositor.WriteMask(mask, folder);
-                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder);
+                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder, edgeTreatment);
             });
             if (_generation.IsCurrent(item.Id, generation)) _store.MarkSegmented(item.Id);
         }

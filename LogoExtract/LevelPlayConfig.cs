@@ -15,7 +15,7 @@ namespace LogoExtract;
 public static class LevelPlayConfig
 {
     /// <summary>PLACEHOLDER -- replace once this app exists on the LevelPlay dashboard.</summary>
-    public const string AppKey = "REPLACE_ME_LEVELPLAY_APP_KEY";
+    public const string AppKey = "29199e055";
 
     public const string SandboxBannerAdUnitId = "";
     public const string SandboxInterstitialAdUnitId = "";

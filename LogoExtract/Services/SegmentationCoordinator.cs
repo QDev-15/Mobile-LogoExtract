@@ -166,10 +166,11 @@ public sealed class SegmentationCoordinator
             // its own result while this queue entry was waiting its turn -- that result is simply stale, not
             // wrong; discard rather than overwrite a newer save.
             if (_store.Get(itemId)?.State != ItemState.Imported) return true;
+            EdgeTreatment edgeTreatment = EdgeTreatmentResolver.Current;
             await Task.Run(() =>
             {
                 CutoutCompositor.WriteMask(mask, folder);
-                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder);
+                CutoutCompositor.WriteCutoutAndThumb(image, mask, folder, edgeTreatment);
             });
             _store.MarkSegmented(itemId);
             return true;

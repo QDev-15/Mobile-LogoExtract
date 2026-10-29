@@ -430,10 +430,11 @@ public partial class EditViewModel : ObservableObject
         BusyText = "Đang lưu...";
         string folder = _store.ItemFolder(_item.Id);
         SKBitmap image = _image;
+        EdgeTreatment edgeTreatment = EdgeTreatmentResolver.Current;
         await Task.Run(() =>
         {
             CutoutCompositor.WriteMask(editedMask, folder);
-            CutoutCompositor.WriteCutoutAndThumb(image, editedMask, folder);
+            CutoutCompositor.WriteCutoutAndThumb(image, editedMask, folder, edgeTreatment);
         });
 
         _store.MarkSegmented(_item.Id);

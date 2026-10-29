@@ -2,6 +2,18 @@ using SkiaSharp;
 
 namespace LogoExtract.Core.Imaging;
 
+/// <summary>Which technique <see cref="CutoutCompositor.WriteCutoutAndThumb"/> uses to fix the "viền trắng"
+/// (white fringe) edge artifact -- owner's request, 2026-10-29: a per-device CHOICE (resolved/persisted by
+/// <c>LogoExtract.Services.EdgeTreatmentResolver</c> in the app project, overridable in Settings), same shape as
+/// <see cref="Segmentation.SegmentationProvider"/>'s own two-option setting, since the two techniques have a
+/// genuine tradeoff (see <see cref="ColorDecontamination"/>'s and <see cref="AlphaChoke"/>'s own doc comments)
+/// rather than one being strictly better.</summary>
+public enum EdgeTreatment
+{
+    Decontaminate,
+    Choke,
+}
+
 /// <summary>Shared mask.png/cutout.png/thumb.png writer -- originally inlined in SegmentViewModel.SaveAsync,
 /// pulled out 2026-10-28 so ItemsViewModel's dashboard status-override buttons (Imported -&gt; "hoàn thành",
 /// which fabricates a full-keep mask instead of waiting on the model) can produce the exact same on-disk shape
@@ -22,20 +34,26 @@ public static class CutoutCompositor
         maskData.SaveTo(maskStream);
     }
 
-    /// <summary>Writes cutout.png (color-decontaminated composite of <paramref name="image"/> + <paramref
-    /// name="mask"/>'s R channel as alpha) and a 320px-wide thumb.png derived from it.</summary>
-    public static void WriteCutoutAndThumb(SKBitmap image, SKBitmap mask, string folder)
+    /// <summary>Writes cutout.png (edge-treated composite of <paramref name="image"/> + <paramref name="mask"/>'s
+    /// R channel as alpha, see <see cref="EdgeTreatment"/>) and a 320px-wide thumb.png derived from it.</summary>
+    public static void WriteCutoutAndThumb(SKBitmap image, SKBitmap mask, string folder, EdgeTreatment edgeTreatment = EdgeTreatment.Decontaminate)
     {
-        // Color decontamination BEFORE compositing (owner's report, 2026-10-27: "viền trắng nhìn ảo quá"):
-        // without this, a soft-alpha edge pixel keeps its full original color (a blend of logo + fabric), which
-        // leaks the old fabric color through as a halo once composited onto anything else.
-        using SKBitmap decontaminated = ColorDecontamination.Decontaminate(image, mask);
+        // Exactly one of these two runs, matching `edgeTreatment` -- owner's report, 2026-10-27, "viền trắng
+        // nhìn ảo quá", originally fixed with decontamination alone; a second technique (Choke) was added
+        // 2026-10-29 as a per-device/per-owner CHOICE once it became clear neither is strictly better (see
+        // EdgeTreatment's own doc comment). Without either, a soft-alpha edge pixel keeps its full original
+        // color (a blend of logo + fabric), which leaks the old fabric color through as a halo once composited
+        // onto anything else.
+        using SKBitmap? decontaminated = edgeTreatment == EdgeTreatment.Decontaminate ? ColorDecontamination.Decontaminate(image, mask) : null;
+        using SKBitmap? choked = edgeTreatment == EdgeTreatment.Choke ? AlphaChoke.Apply(mask) : null;
+        SKBitmap colorSource = decontaminated ?? image;
+        SKBitmap alphaSource = choked ?? mask;
 
         // Composite via raw pixel spans, not GetPixel/SetPixel per pixel: a real phone photo is routinely 12+
         // MP, and GetPixel/SetPixel's per-call overhead made this loop visibly slow (multi-second) at that size.
         using var cutout = new SKBitmap(image.Width, image.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
-        using (SKPixmap imagePx = decontaminated.PeekPixels())
-        using (SKPixmap maskPx = mask.PeekPixels())
+        using (SKPixmap imagePx = colorSource.PeekPixels())
+        using (SKPixmap maskPx = alphaSource.PeekPixels())
         using (SKPixmap cutoutPx = cutout.PeekPixels())
         {
             ReadOnlySpan<byte> imageBytes = imagePx.GetPixelSpan();

@@ -46,6 +46,51 @@
     <ScrollView>
         <VerticalStackLayout Padding="0,16,0,24">
 
+            <!-- Pro/Billing (owner's request, 2026-10-29, "thêm chức năng mua bản quyền mua pro giống như các
+                 app khác"): first in the list, same ordering as the sibling PdfReader/Minesweeper apps' own
+                 Settings. Buy/Restore row hidden once already Pro; nothing left to buy or restore. -->
+            <Label Text="GÓI PRO" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                </Border.Shadow>
+                <VerticalStackLayout Spacing="10" Padding="0,10">
+                    <Label Text="{Binding LicenseSummaryText}" Style="{StaticResource RowName}" FontFamily="OpenSansSemibold" />
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10" IsVisible="{Binding IsPro, Converter={StaticResource InvertedBoolConverter}}">
+                        <Border Grid.Column="0" HeightRequest="42" StrokeThickness="0"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="21" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding PurchaseProCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding BuyButtonText}" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center"
+                                   TextColor="{StaticResource PrimaryDarkText}" />
+                        </Border>
+                        <Border Grid.Column="1" HeightRequest="42" StrokeThickness="1.5"
+                                Stroke="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                                BackgroundColor="Transparent">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="21" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding RestorePurchaseCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Khôi phục giao dịch" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                        </Border>
+                    </Grid>
+
+                    <ActivityIndicator IsRunning="{Binding IsPurchaseBusy}" IsVisible="{Binding IsPurchaseBusy}" HeightRequest="22"
+                                        Color="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+
+                    <Label Text="Bản Pro tắt toàn bộ quảng cáo, mua một lần dùng vĩnh viễn." Style="{StaticResource Hint}"
+                           IsVisible="{Binding IsPro, Converter={StaticResource InvertedBoolConverter}}" />
+                </VerticalStackLayout>
+            </Border>
+
             <Label Text="ỨNG DỤNG" Style="{StaticResource Section}" />
             <Border Style="{StaticResource Card}">
                 <Border.Shadow>
@@ -132,6 +177,47 @@
                         <ActivityIndicator Grid.Column="0" HorizontalOptions="Start" WidthRequest="18" HeightRequest="18"
                                             IsRunning="{Binding IsBenchmarking}" IsVisible="{Binding IsBenchmarking}"
                                             Color="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Edge treatment for the "viền trắng" (white fringe) cutout artifact; owner's request,
+                 2026-10-29, "có bao nhiêu phương án giải quyết ... nếu có 2 cách thì làm thêm setting". Same
+                 row/checkmark pattern as the segmentation provider card above. Only affects items segmented/
+                 re-segmented AFTER this changes, not retroactive. -->
+            <Label Text="XỬ LÝ VIỀN ẢNH TÁCH NỀN" Style="{StaticResource Section}" />
+            <Border Style="{StaticResource Card}">
+                <Border.Shadow>
+                    <Shadow Brush="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark=Black}" Opacity="{AppThemeBinding Light=0.06, Dark=0.3}" Radius="6" Offset="0,2" />
+                </Border.Shadow>
+                <VerticalStackLayout>
+                    <Label Text="Khắc phục viền trắng/màu nhiễu quanh logo đã tách nền." Style="{StaticResource Hint}" Padding="0,10,0,8" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetEdgeDecontaminateCommand}" />
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout VerticalOptions="Center" Spacing="1">
+                            <Label Text="Khử nhiễu màu viền" Style="{StaticResource RowName}" />
+                            <Label Text="Ước lượng lại màu thật ở biên (mặc định)" Style="{StaticResource Hint}" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.Checked}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                               VerticalOptions="Center" IsVisible="{Binding IsEdgeDecontaminate}"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+                    </Grid>
+                    <BoxView HeightRequest="0.6" Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+
+                    <Grid ColumnDefinitions="*,Auto" MinimumHeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SetEdgeChokeCommand}" />
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout VerticalOptions="Center" Spacing="1">
+                            <Label Text="Co mép (không viền)" Style="{StaticResource RowName}" />
+                            <Label Text="Cắt sát biên hơn một chút, đảm bảo hết viền" Style="{StaticResource Hint}" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="1" Text="{x:Static views:Icons.Checked}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="18"
+                               VerticalOptions="Center" IsVisible="{Binding IsEdgeChoke}"
+                               TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
                     </Grid>
                 </VerticalStackLayout>
             </Border>
