@@ -54,6 +54,40 @@
                 <Slider Minimum="-1" Maximum="1" Value="{Binding Saturation}" HeightRequest="24"
                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
             </VerticalStackLayout>
+
+            <!-- Cân bằng trắng (white balance, added 2026-11-12): no slider — the per-channel multiplier only
+                 ever comes from the "Lấy mẫu màu" eyedropper tool below (PLAN.md 2.4's own "pick a neutral
+                 point" tool), not a manually-dragged value, so there is nothing to drag here, only a label to
+                 double-tap-reset (same gesture convention as the 3 sliders above) and a toggle chip that arms/
+                 disarms sampling on the preview image. -->
+            <VerticalStackLayout Spacing="4" Margin="0,2,0,0">
+                <Label Text="Cân bằng trắng" FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer NumberOfTapsRequired="2" Command="{Binding ResetWhiteBalanceCommand}" />
+                    </Label.GestureRecognizers>
+                </Label>
+                <!-- Text itself (not just color) carries the armed/disarmed state — accessibility baseline
+                     §7's "never rely on color alone for a state that matters" (mobile-app-design.md). -->
+                <!-- HeightRequest=44: mobile-app-design.md §7's touch-target floor, unlike the 3 sliders above
+                     (those shrank to 24dp box height by explicit owner request/exception, 2026-10-29 — this new
+                     button has no such exception, so it keeps the baseline). -->
+                <Button Text="Lấy mẫu màu" Command="{Binding ToggleEyedropperCommand}"
+                        HeightRequest="44" FontSize="12" Padding="14,0" CornerRadius="20"
+                        HorizontalOptions="Start" MinimumWidthRequest="0"
+                        BackgroundColor="Transparent" BorderWidth="1.5"
+                        BorderColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                        TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsEyedropperArmed}" Value="True">
+                            <Setter Property="Text" Value="Đang chọn điểm... (chạm vào ảnh)" />
+                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                            <Setter Property="TextColor" Value="{AppThemeBinding Light=White, Dark={StaticResource PrimaryDarkText}}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </VerticalStackLayout>
         </VerticalStackLayout>
 
         <!-- Ảnh: dùng chung cho cả 3 trạng thái (đã tách nền / chưa tách nền-đang chọn vùng / đang tách), kết
@@ -64,20 +98,27 @@
         <Grid Grid.Row="1" Margin="0,4">
             <Border StrokeShape="RoundRectangle 12"
                     Stroke="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}"
-                    IsVisible="{Binding IsEditToolbarOpen, Converter={StaticResource InvertedBoolConverter}}">
+                    IsVisible="{Binding IsPreviewMode}">
                 <views:AdjustablePreviewView x:Name="PreviewCanvas"
                                              SourceBitmap="{Binding PreviewBitmap}"
-                                             Brightness="{Binding Brightness}" Contrast="{Binding Contrast}" Saturation="{Binding Saturation}" />
+                                             Brightness="{Binding Brightness}" Contrast="{Binding Contrast}" Saturation="{Binding Saturation}"
+                                             WhiteBalanceR="{Binding WhiteBalanceR}" WhiteBalanceG="{Binding WhiteBalanceG}" WhiteBalanceB="{Binding WhiteBalanceB}"
+                                             EyedropperArmed="{Binding IsEyedropperArmed}" />
             </Border>
 
             <views:MaskEditorView x:Name="Editor" IsVisible="{Binding IsEditToolbarOpen}" />
+
+            <!-- Làm phẳng (mesh-warp flatten tool, added 2026-11-12): its own draggable-grid canvas, mutually
+                 exclusive with both modes above via IsFlattenOpen/IsEditToolbarOpen (see EditViewModel's own
+                 remarks on the edit-mode state machine). -->
+            <views:FlattenGridView x:Name="FlattenEditor" IsVisible="{Binding IsFlattenOpen}" />
 
             <!-- Cycles the preview's backing (Ô vuông/checkerboard -> Trắng -> Đen -> Xám) — only meaningful
                  over AdjustablePreviewView's own color-adjust mode. -->
             <Border HorizontalOptions="End" VerticalOptions="Start" Margin="0,10,10,0"
                     MinimumHeightRequest="44" MinimumWidthRequest="44" Padding="12,0"
                     BackgroundColor="#CC000000" Stroke="Transparent"
-                    IsVisible="{Binding IsEditToolbarOpen, Converter={StaticResource InvertedBoolConverter}}">
+                    IsVisible="{Binding IsPreviewMode}">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="16" />
                 </Border.StrokeShape>
@@ -132,22 +173,38 @@
             </Grid>
         </Grid>
 
-        <!-- Thanh dưới cùng (chính): + "Chỉnh sửa" (mở toolbar phụ ở trên — LUÔN bật, kể cả khi IsBusy, vì đây
-             là cách duy nhất để vào "Chọn vùng" trong lúc đang tách nền). 4 nút còn lại khoá khi IsBusy; mỗi nút
-             cũng tự lưu Brightness/Contrast/Saturation hiện tại vào store trước khi làm việc của nó (không còn
-             nút tích xanh riêng để lưu chỉnh màu). -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+        <!-- Toolbar phụ của "Làm phẳng" (added 2026-11-12) — cùng kiểu chồng-lên-trên-toolbar-chính như toolbar
+             brush ở trên, chỉ hiện khi IsFlattenOpen (loại trừ nhau với IsEditToolbarOpen, xem EditViewModel's
+             own remarks). Không khoá theo IsBusy: cả 3 nút chỉ hiện sau khi OpenFlattenToolAsync's decode đã
+             xong (IsBusy đã về false lúc đó), và Áp dụng tự khoá double-tap qua EditPage's _actionInFlight. -->
+        <Grid Grid.Row="2" IsVisible="{Binding IsFlattenOpen}"
+              ColumnDefinitions="*,*,*" HeightRequest="68" Padding="0,2,0,10"
               BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
-            <BoxView Grid.ColumnSpan="5" HeightRequest="0.6" VerticalOptions="Start"
+            <BoxView Grid.ColumnSpan="3" HeightRequest="0.6" VerticalOptions="Start"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+            <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Refresh}" Text="Đặt lại lưới" Clicked="OnResetFlattenGrid" />
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Close}" Text="Huỷ" Clicked="OnCancelFlatten" />
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Checked}" Text="Áp dụng" IsActive="True" Clicked="OnApplyFlatten" />
+        </Grid>
+
+        <!-- Thanh dưới cùng (chính): + "Chỉnh sửa" (mở toolbar phụ ở trên — LUÔN bật, kể cả khi IsBusy, vì đây
+             là cách duy nhất để vào "Chọn vùng" trong lúc đang tách nền). "Làm phẳng" (added 2026-11-12) và 4 nút
+             còn lại khoá khi IsBusy; mỗi nút cũng tự lưu Brightness/Contrast/Saturation hiện tại vào store trước
+             khi làm việc của nó (không còn nút tích xanh riêng để lưu chỉnh màu). -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*,*,*,*" HeightRequest="68" Padding="0,2,0,10"
+              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView Grid.ColumnSpan="6" HeightRequest="0.6" VerticalOptions="Start"
                      Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
             <views:ToolButton Grid.Column="0" Icon="{x:Static views:Icons.Tune}" Text="Chỉnh sửa" Command="{Binding OpenEditToolbarCommand}" />
-            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Edit}" Text="Vector hoá" Command="{Binding VectorizeCommand}"
+            <views:ToolButton Grid.Column="1" Icon="{x:Static views:Icons.Grid}" Text="Làm phẳng" Command="{Binding OpenFlattenToolCommand}"
                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
-            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Save}" Text="Lưu ảnh" Command="{Binding SaveToGalleryCommand}"
+            <views:ToolButton Grid.Column="2" Icon="{x:Static views:Icons.Edit}" Text="Vector hoá" Command="{Binding VectorizeCommand}"
                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
-            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Share}" Text="Chia sẻ" Command="{Binding ExportCommand}"
+            <views:ToolButton Grid.Column="3" Icon="{x:Static views:Icons.Save}" Text="Lưu ảnh" Command="{Binding SaveToGalleryCommand}"
                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
-            <views:ToolButton Grid.Column="4" Icon="{x:Static views:Icons.Checked}" Text="Hoàn thành" IsActive="True" Command="{Binding FinishCommand}"
+            <views:ToolButton Grid.Column="4" Icon="{x:Static views:Icons.Share}" Text="Chia sẻ" Command="{Binding ExportCommand}"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            <views:ToolButton Grid.Column="5" Icon="{x:Static views:Icons.Checked}" Text="Hoàn thành" IsActive="True" Command="{Binding FinishCommand}"
                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
         </Grid>
 

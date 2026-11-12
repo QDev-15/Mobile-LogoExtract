@@ -17,7 +17,7 @@ public class VectorizeSmokeTests
         string outPath = Path.Combine(RepoRoot, "Mobile-LogoExtract", "LogoExtract-prototype", "outputs", "3_vectorize_test.svg");
 
         using SKBitmap image = SKBitmap.Decode(samplePath)!;
-        using var service = new U2NetSegmentationService(modelPath);
+        using var service = new U2NetSegmentationService(modelPath, SegmentationProvider.Cpu);
         SegmentationResult result = service.Segment(image);
 
         IReadOnlyList<Contour> contours = ContourTracer.Trace(result.AlphaMask);

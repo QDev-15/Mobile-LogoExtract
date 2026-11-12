@@ -4,6 +4,7 @@ using LogoExtract.Core;
 using LogoExtract.Core.Imaging;
 using LogoExtract.Core.Segmentation;
 using LogoExtract.Core.Vectorize;
+using LogoExtract.Core.Warp;
 using LogoExtract.Services;
 using LogoExtract.Views;
 using Microsoft.Maui.ApplicationModel;
@@ -20,15 +21,21 @@ namespace LogoExtract.ViewModels;
 /// autoSaveOnSuccess paths no longer navigating anywhere (there is nowhere left to navigate TO -- this IS
 /// EditPage now).
 ///
-/// <para><b>Edit-mode state machine</b>: <see cref="IsEditToolbarOpen"/> is the single switch between this
-/// page's two visual modes. False (default, the common case): color-adjust mode -- AdjustablePreviewView shows
-/// the (possibly not-yet-existing) cutout read-only, Brightness/Contrast/Saturation sliders are live, no
-/// brushing. True: brush-edit mode -- MaskEditorView shows the current mask for Thêm/Xoá brushing, a second
-/// (popup-style) toolbar with Thêm/Xoá/Chọn vùng/Xong renders ON TOP of the main bottom toolbar (which stays
-/// visible underneath, per the owner's own spec: "chồng lên trên ... không thay thế nó"). <see
-/// cref="IsSelectingRegion"/> is a sub-state of brush-edit mode (unchanged from SegmentViewModel): swaps the
-/// sub-toolbar's own two buttons to Huỷ/Xác nhận vùng while the user brushes a rough region for
-/// <see cref="ConfirmRegionSelectAsync"/> to crop-and-resegment inside.</para>
+/// <para><b>Edit-mode state machine</b>: <see cref="IsEditToolbarOpen"/> and <see cref="IsFlattenOpen"/> are two
+/// MUTUALLY EXCLUSIVE switches between this page's three visual modes (<see cref="IsFlattenOpen"/> added
+/// 2026-11-12 for the manual mesh-warp flatten tool, PLAN.md 2.3). Both false (default, the common case):
+/// color-adjust mode -- AdjustablePreviewView shows the (possibly not-yet-existing) cutout read-only,
+/// Brightness/Contrast/Saturation sliders are live, no brushing. <see cref="IsEditToolbarOpen"/> true: brush-edit
+/// mode -- MaskEditorView shows the current mask for Thêm/Xoá brushing, a second (popup-style) toolbar with
+/// Thêm/Xoá/Chọn vùng/Xong renders ON TOP of the main bottom toolbar (which stays visible underneath, per the
+/// owner's own spec: "chồng lên trên ... không thay thế nó"). <see cref="IsSelectingRegion"/> is a sub-state of
+/// brush-edit mode (unchanged from SegmentViewModel): swaps the sub-toolbar's own two buttons to Huỷ/Xác nhận
+/// vùng while the user brushes a rough region for <see cref="ConfirmRegionSelectAsync"/> to crop-and-resegment
+/// inside. <see cref="IsFlattenOpen"/> true: FlattenGridView shows a draggable mesh-warp control-point grid over
+/// the item's RAW (pre-flatten) cutout, with its own Đặt lại lưới/Huỷ/Áp dụng sub-toolbar -- see
+/// <see cref="OpenFlattenToolAsync"/>'s own remarks on why it always re-decodes CutoutFile rather than reusing
+/// whatever <see cref="_cutout"/> currently holds. <see cref="IsPreviewMode"/> is the derived "neither sub-mode
+/// is open" bool EditPage.xaml binds AdjustablePreviewView's own visibility to.</para>
 ///
 /// <para><b>Busy-lock rule</b> ("khi hành động tách nền đang chạy thì khóa hết các button - action ... trừ hành
 /// động chọn vùng"): every slider and every main/sub toolbar button except "Chỉnh sửa" (opens the sub-toolbar)
@@ -57,6 +64,13 @@ public partial class EditViewModel : ObservableObject
     private SKBitmap? _image; // original decoded photo (EXIF-oriented) -- owned jointly with MaskEditorView, see Unload()'s own remarks
     private SKBitmap? _mask;  // current alpha mask -- same joint-ownership note as _image
     private SKBitmap? _cutout; // full-resolution segmented result, loaded once from disk -- only ever re-filtered on demand (Export/SaveToGallery/Vectorize), never while dragging a slider
+    // Full-resolution RAW (pre-flatten) cutout, decoded fresh only while the flatten tool is open -- deliberately
+    // a SEPARATE field from _cutout (which prefers FlattenedFile once one exists, see ReloadCutoutPreview's own
+    // remarks): the flatten tool must always warp from the ORIGINAL segmentation result, never from an
+    // already-flattened image, or re-applying the restored grid on top of already-warped pixels would double-warp
+    // instead of reproducing the same result. Owned solely by this field -- disposed in
+    // CancelFlattenTool/ApplyFlattenAsync/Unload.
+    private SKBitmap? _flattenSource;
 
     // Same GenerationGuard<string> class ItemsViewModel uses for its own dashboard overrides (see that class's
     // own remarks) -- relocated verbatim from SegmentViewModel, which used this to let StartRegionSelect
@@ -86,6 +100,28 @@ public partial class EditViewModel : ObservableObject
     [ObservableProperty]
     private double saturation; // -1..1
 
+    // White balance (added 2026-11-12): per-channel multiplier from the "Lấy mẫu màu" (pick neutral point)
+    // eyedropper tool, fed into AdjustablePreviewView's own bindable properties of the same names for the live
+    // preview, and folded into ColorAdjust by PersistColorAdjust the same way Brightness/Contrast/Saturation
+    // already are. 1.0 each = no correction, matching ColorAdjust.WhiteBalance's own default -- not a tuple
+    // [ObservableProperty] since CommunityToolkit.Mvvm's XAML binding story for a ValueTuple property is awkward
+    // next to three plain doubles that bind straight to AdjustablePreviewView's own three bindable properties.
+    [ObservableProperty]
+    private double whiteBalanceR = 1;
+
+    [ObservableProperty]
+    private double whiteBalanceG = 1;
+
+    [ObservableProperty]
+    private double whiteBalanceB = 1;
+
+    /// <summary>True while the "Lấy mẫu màu" tool is armed -- the next tap on AdjustablePreviewView samples a
+    /// pixel (see PickWhiteBalance) instead of being treated as a potential double-tap-to-reset zoom gesture.
+    /// Auto-disarms itself the instant a sample is taken (one tap = one pick), so the user doesn't have to
+    /// remember to turn it back off.</summary>
+    [ObservableProperty]
+    private bool isEyedropperArmed;
+
     // Not a safety net -- see SegmentViewModel's former identical remark on this same default: the real
     // guarantee is that LoadAsync/RunAutoSegmentAsync/ConfirmRegionSelectAsync/SaveMaskAsync set this explicitly
     // on every exit path, so this default is only ever visible for the instant between construction and
@@ -109,6 +145,14 @@ public partial class EditViewModel : ObservableObject
     [ObservableProperty]
     private bool isSelectingRegion;
 
+    /// <summary>True while the flatten sub-toolbar (Đặt lại lưới/Huỷ/Áp dụng) and FlattenGridView are open --
+    /// see this class's own remarks on the edit-mode state machine. Mutually exclusive with
+    /// <see cref="IsEditToolbarOpen"/> (enforced at the two call sites that open either one, not by a shared
+    /// setter -- there are only two of them, OpenEditToolbar and OpenFlattenToolAsync, so a third abstraction
+    /// would be more machinery than the two if-checks it would replace).</summary>
+    [ObservableProperty]
+    private bool isFlattenOpen;
+
     [ObservableProperty]
     private string? vectorPreviewPath;
 
@@ -118,7 +162,23 @@ public partial class EditViewModel : ObservableObject
     /// MaskEditorView is always in sync by the time the user opens it.</summary>
     public event Action<SKBitmap, SKBitmap>? ImagesReady;
 
+    /// <summary>Fired once per <see cref="OpenFlattenToolAsync"/> call, handing EditPage's code-behind the
+    /// freshly-decoded raw cutout + the grid to restore (the item's saved <see cref="LogoItem.Warp"/>, or an
+    /// identity grid for a never-flattened item) so it can push them into FlattenGridView -- same wiring shape as
+    /// <see cref="ImagesReady"/>.</summary>
+    public event Action<SKBitmap, WarpGrid>? FlattenReady;
+
     public MaskEditorView.BrushMode Mode { get; private set; } = MaskEditorView.BrushMode.Add;
+
+    /// <summary>True when neither sub-mode is open -- i.e. plain color-adjust preview, AdjustablePreviewView's
+    /// own turf. Derived rather than its own [ObservableProperty]: EditPage.xaml needs a single bool to gate
+    /// AdjustablePreviewView's visibility, but CommunityToolkit.Mvvm's source generator has no way to know
+    /// IsEditToolbarOpen and IsFlattenOpen are related, so the two partial OnXChanged hooks below raise this
+    /// property's change manually.</summary>
+    public bool IsPreviewMode => !IsEditToolbarOpen && !IsFlattenOpen;
+
+    partial void OnIsEditToolbarOpenChanged(bool value) => OnPropertyChanged(nameof(IsPreviewMode));
+    partial void OnIsFlattenOpenChanged(bool value) => OnPropertyChanged(nameof(IsPreviewMode));
 
     partial void OnItemIdChanged(string value) => _ = LoadAsync();
 
@@ -143,6 +203,7 @@ public partial class EditViewModel : ObservableObject
         Brightness = item.ColorAdjust.Brightness;
         Contrast = item.ColorAdjust.Contrast;
         Saturation = item.ColorAdjust.Saturation;
+        (WhiteBalanceR, WhiteBalanceG, WhiteBalanceB) = item.ColorAdjust.WhiteBalance;
 
         string folder = _store.ItemFolder(item.Id);
         string path = Path.Combine(folder, item.OriginalFile);
@@ -272,7 +333,11 @@ public partial class EditViewModel : ObservableObject
     /// MaskEditorView is already in sync with whatever _image/_mask currently are (via ImagesReady, fired on
     /// every load/segment step regardless of whether this toolbar is open) -- nothing else to do here.</summary>
     [RelayCommand]
-    private void OpenEditToolbar() => IsEditToolbarOpen = true;
+    private void OpenEditToolbar()
+    {
+        IsFlattenOpen = false; // mutual exclusivity with the flatten sub-mode -- see this class's own remarks
+        IsEditToolbarOpen = true;
+    }
 
     /// <summary>Owner's report (relocated from SegmentViewModel): a salient-object model on a full photo finds
     /// the whole shirt, not the small printed logo on it. Hands the editor a blank mask in Add mode so the user
@@ -445,22 +510,32 @@ public partial class EditViewModel : ObservableObject
         IsBusy = false;
     }
 
-    /// <summary>(Re)loads the full-resolution cutout + its downscaled on-screen preview from
-    /// <c>_item.CutoutFile</c> on disk -- called on first load and every time the mask changes on disk (a
-    /// SaveMaskAsync commit). Deliberately does NOT touch Brightness/Contrast/Saturation: those are independent
-    /// of which pixels the cutout contains, so a mask-only edit must not reset/discard a color tweak the user
-    /// has made but not yet committed via a bottom-toolbar action (see <see cref="PersistColorAdjust"/>'s own
-    /// remarks).</summary>
+    /// <summary>(Re)loads the full-resolution "working image" + its downscaled on-screen preview from disk --
+    /// called on first load and every time the mask changes on disk (a SaveMaskAsync commit) or the flatten tool
+    /// commits a new FlattenedFile (ApplyFlattenAsync). Deliberately does NOT touch Brightness/Contrast/
+    /// Saturation: those are independent of which pixels the cutout contains, so a mask-only edit must not
+    /// reset/discard a color tweak the user has made but not yet committed via a bottom-toolbar action (see
+    /// <see cref="PersistColorAdjust"/>'s own remarks).
+    ///
+    /// <para>Prefers <see cref="LogoItem.FlattenedFile"/> over <see cref="LogoItem.CutoutFile"/> once the former
+    /// exists (added 2026-11-12, alongside the flatten tool -- PLAN.md's own pipeline order, Segment -> Flatten
+    /// -> Color-adjust -> Vectorize): every caller downstream of segmentation (ComputeFullResAdjustedAsync,
+    /// hence SaveToGalleryAsync/ExportAsync; VectorizeAsync's width/height) reads <see cref="_cutout"/>, so fixing
+    /// the preference HERE, in the one place that fills that field, makes all of them correct for free without
+    /// touching each call site. The flatten tool itself does NOT go through this method -- see
+    /// <see cref="OpenFlattenToolAsync"/>'s own remarks on why it always re-decodes the raw CutoutFile
+    /// instead.</para></summary>
     private void ReloadCutoutPreview()
     {
         _cutout?.Dispose();
         _cutout = null;
         PreviewBitmap?.Dispose();
         PreviewBitmap = null;
-        if (_item?.CutoutFile == null) return;
-        string path = Path.Combine(_store.ItemFolder(_item.Id), _item.CutoutFile);
+        string? workingFile = _item?.FlattenedFile ?? _item?.CutoutFile;
+        if (workingFile == null) return;
+        string path = Path.Combine(_store.ItemFolder(_item!.Id), workingFile);
         _cutout = BitmapIO.DecodeAsRgba8888(path);
-        if (_cutout == null) return; // corrupted/missing cutout file; leave the preview blank rather than crash
+        if (_cutout == null) return; // corrupted/missing file; leave the preview blank rather than crash
         // Downscaled, not the full-resolution _cutout directly -- see DownscaleForPreview's own remarks.
         PreviewBitmap = DownscaleForPreview(_cutout, 1400);
     }
@@ -476,25 +551,89 @@ public partial class EditViewModel : ObservableObject
             ?? throw new InvalidOperationException("Resize failed");
     }
 
+    /// <summary>Builds a mask bitmap in the exact shape ContourTracer.Trace expects (Rgba8888, mask value in the
+    /// R channel) from <paramref name="source"/>'s own ALPHA channel -- see VectorizeAsync's own remarks on why
+    /// this is the correct post-flatten mask instead of re-reading mask.png. Span-based, not GetPixel/SetPixel,
+    /// same convention as every other full-photo-resolution pixel pass in this app.</summary>
+    private static SKBitmap ExtractAlphaAsMask(SKBitmap source)
+    {
+        var mask = new SKBitmap(source.Width, source.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using SKPixmap srcPx = source.PeekPixels();
+        using SKPixmap dstPx = mask.PeekPixels();
+        ReadOnlySpan<byte> src = srcPx.GetPixelSpan();
+        Span<byte> dst = dstPx.GetPixelSpan();
+        for (int i = 0; i + 3 < src.Length; i += 4)
+        {
+            byte a = src[i + 3];
+            dst[i] = a;
+            dst[i + 1] = a;
+            dst[i + 2] = a;
+            dst[i + 3] = 255;
+        }
+        return mask;
+    }
+
     /// <summary>Computes the FULL-resolution color-adjusted cutout fresh, from <see cref="_cutout"/> -- called
     /// once by ExportAsync/SaveToGalleryAsync right when the user actually asks to export.</summary>
     private async Task<SKBitmap?> ComputeFullResAdjustedAsync()
     {
         if (_cutout == null) return null;
         SKBitmap cutout = _cutout;
-        var adjust = new ColorAdjust { Brightness = Brightness, Contrast = Contrast, Saturation = Saturation };
+        var adjust = new ColorAdjust
+        {
+            Brightness = Brightness,
+            Contrast = Contrast,
+            Saturation = Saturation,
+            WhiteBalance = (WhiteBalanceR, WhiteBalanceG, WhiteBalanceB),
+        };
         return await Task.Run(() => ColorAdjustFilter.Apply(cutout, adjust));
     }
 
-    /// <summary>Commits the current Brightness/Contrast/Saturation to the store -- called from every
+    /// <summary>Commits the current Brightness/Contrast/Saturation/WhiteBalance to the store -- called from every
     /// bottom-toolbar action (owner's rule, 2026-10-29, replacing the removed green-checkmark "Lưu chỉnh màu"
-    /// button: "ảnh được lưu thay đổi của 3 công cụ khi người dùng dùng các action ở toolbar dưới cùng").</summary>
+    /// button: "ảnh được lưu thay đổi của 3 công cụ khi người dùng dùng các action ở toolbar dưới cùng" -- extended
+    /// to a 4th tool, white balance, 2026-11-12, same rule applies unchanged).</summary>
     private void PersistColorAdjust()
     {
         if (_item == null) return;
-        var adjust = new ColorAdjust { Brightness = Brightness, Contrast = Contrast, Saturation = Saturation };
+        var adjust = new ColorAdjust
+        {
+            Brightness = Brightness,
+            Contrast = Contrast,
+            Saturation = Saturation,
+            WhiteBalance = (WhiteBalanceR, WhiteBalanceG, WhiteBalanceB),
+        };
         _store.Update(_item.Id, i => i with { ColorAdjust = adjust });
         _item = _store.Get(_item.Id) ?? _item;
+    }
+
+    [RelayCommand]
+    private void ToggleEyedropper() => IsEyedropperArmed = !IsEyedropperArmed;
+
+    [RelayCommand]
+    private void ResetWhiteBalance()
+    {
+        WhiteBalanceR = 1;
+        WhiteBalanceG = 1;
+        WhiteBalanceB = 1;
+    }
+
+    /// <summary>EditPage code-behind's handler for AdjustablePreviewView.ColorPicked -- <paramref name="normalized"/>
+    /// is a 0..1, resolution-independent bitmap-space coordinate (that view only ever shows the downscaled
+    /// PreviewBitmap, never <see cref="_cutout"/> directly), mapped here onto the FULL-resolution cutout so the
+    /// sampled color -- and therefore the computed white-balance multiplier -- is exact, not approximated from a
+    /// downscaled copy. Auto-disarms <see cref="IsEyedropperArmed"/> on a successful pick (one tap = one pick).</summary>
+    public void PickWhiteBalance(SKPoint normalized)
+    {
+        if (_cutout == null) return;
+        int x = Math.Clamp((int)Math.Round(normalized.X * (_cutout.Width - 1)), 0, _cutout.Width - 1);
+        int y = Math.Clamp((int)Math.Round(normalized.Y * (_cutout.Height - 1)), 0, _cutout.Height - 1);
+        SKColor sampled = _cutout.GetPixel(x, y);
+        (double r, double g, double b) = ColorAdjustFilter.ComputeWhiteBalance(sampled);
+        WhiteBalanceR = r;
+        WhiteBalanceG = g;
+        WhiteBalanceB = b;
+        IsEyedropperArmed = false;
     }
 
     [RelayCommand]
@@ -505,6 +644,87 @@ public partial class EditViewModel : ObservableObject
 
     [RelayCommand]
     private void ResetSaturation() => Saturation = 0;
+
+    /// <summary>Opens the flatten sub-mode (PLAN.md 2.3's "công cụ làm phẳng thủ công", the biggest gap flagged
+    /// in CLAUDE.md's "Chưa làm" list, 2026-10-27). Deliberately re-decodes CutoutFile fresh from disk every time
+    /// instead of reusing <see cref="_cutout"/> (which may already be the FlattenedFile, see
+    /// ReloadCutoutPreview's own remarks) -- the flatten tool must always warp the RAW segmentation result, never
+    /// an already-warped one, or restoring the saved grid and continuing to drag would double-warp instead of
+    /// reproducing the previously-seen result. The decode runs behind <see cref="IsBusy"/> (same as every other
+    /// disk round-trip in this class) since a 12+MP photo's decode is a real, felt delay, not instant.
+    /// AllowConcurrentExecutions = false for the same double-tap reason VectorizeAsync's own comment gives --
+    /// two concurrent decodes would leak one of the two resulting bitmaps.</summary>
+    [RelayCommand(AllowConcurrentExecutions = false)]
+    private async Task OpenFlattenToolAsync()
+    {
+        if (_item?.CutoutFile == null)
+        {
+            await _dialog.AlertAsync("Chưa có ảnh tách nền", "Cần tách nền xong trước khi làm phẳng.", "Đóng");
+            return;
+        }
+        IsEditToolbarOpen = false; // mutual exclusivity -- see this class's own remarks
+        IsSelectingRegion = false;
+        IsBusy = true;
+        BusyText = "Đang mở công cụ làm phẳng...";
+        string path = Path.Combine(_store.ItemFolder(_item.Id), _item.CutoutFile);
+        SKBitmap? rawCutout = await Task.Run(() => BitmapIO.DecodeAsRgba8888(path));
+        IsBusy = false;
+        if (rawCutout == null)
+        {
+            await _dialog.AlertAsync("Lỗi", "Không thể mở ảnh để làm phẳng.", "Đóng");
+            return;
+        }
+        _flattenSource?.Dispose();
+        _flattenSource = rawCutout;
+        IsFlattenOpen = true;
+        // WarpGrid.Identity() for a never-flattened item (null Warp) -- restores the last saved grid otherwise,
+        // so re-opening the tool continues from where the user left off instead of starting over (LogoItem.Warp's
+        // own doc comment).
+        FlattenReady?.Invoke(_flattenSource, _item.Warp ?? WarpGrid.Identity());
+    }
+
+    /// <summary>Discards whatever grid edit was in progress -- EditPage code-behind's "Huỷ" handler. Does NOT
+    /// touch the item's already-persisted FlattenedFile/Warp (if any); only abandons the CURRENT, uncommitted
+    /// drag session.</summary>
+    public void CancelFlattenTool()
+    {
+        IsFlattenOpen = false;
+        _flattenSource?.Dispose();
+        _flattenSource = null;
+    }
+
+    /// <summary>Commits <paramref name="grid"/> (FlattenGridView's own CurrentGrid, read by EditPage code-behind's
+    /// "Áp dụng" handler, same ownership shape as SaveMaskAsync/ConfirmRegionSelectAsync reading
+    /// MaskEditorView.CurrentMask -- hence a plain public Task method here too, not a [RelayCommand]: EditPage's
+    /// code-behind is the only caller, and it already has its own _actionInFlight double-tap guard, the same
+    /// pattern OnDone/OnConfirmRegion use). Runs the SAME MeshWarp.Apply call the live preview already
+    /// approximated, but on the full-resolution <see cref="_flattenSource"/>, then persists via
+    /// ItemStore.MarkFlattened and reloads the color-adjust preview (which will now prefer the fresh
+    /// FlattenedFile, see ReloadCutoutPreview's own remarks).</summary>
+    public async Task ApplyFlattenAsync(WarpGrid grid)
+    {
+        if (_item == null || _flattenSource == null) return;
+        IsBusy = true;
+        BusyText = "Đang áp dụng làm phẳng...";
+        string folder = _store.ItemFolder(_item.Id);
+        SKBitmap source = _flattenSource;
+        string flattenedPath = Path.Combine(folder, CutoutCompositor.FlattenedFileName);
+        await Task.Run(() =>
+        {
+            using SKBitmap flattened = MeshWarp.Apply(source, grid);
+            using SKData data = flattened.Encode(SKEncodedImageFormat.Png, 100);
+            using FileStream stream = File.Create(flattenedPath);
+            data.SaveTo(stream);
+        });
+
+        _store.MarkFlattened(_item.Id, grid);
+        _item = _store.Get(_item.Id) ?? _item;
+        IsFlattenOpen = false;
+        _flattenSource?.Dispose();
+        _flattenSource = null;
+        ReloadCutoutPreview();
+        IsBusy = false;
+    }
 
     // AllowConcurrentExecutions = false (owner's request, 2026-10-29, "tránh nhiều action cùng chạy rồi loạn app
     // gây crash"): a double-tap here would otherwise run two concurrent vectorize passes writing the SAME
@@ -520,10 +740,20 @@ public partial class EditViewModel : ObservableObject
         BusyText = "Đang vector hoá...";
         string folder = _store.ItemFolder(_item.Id);
         string svgPath = Path.Combine(folder, "vector.svg");
-        int width = _cutout.Width, height = _cutout.Height;
+        SKBitmap cutout = _cutout; // already FlattenedFile-preferring, see ReloadCutoutPreview's own remarks
+        int width = cutout.Width, height = cutout.Height;
+        // Once a FlattenedFile exists, mask.png on disk is the UN-warped silhouette -- tracing it directly would
+        // produce a vector outline that no longer matches the flattened image's actual (warped) logo boundary.
+        // The flattened cutout's own alpha channel IS the correctly-warped mask (MeshWarp.Apply warps all 4
+        // RGBA channels together, and CutoutCompositor.WriteCutoutAndThumb originally wrote the mask's R value
+        // straight into the cutout's alpha channel), so derive the trace mask from there instead of re-reading
+        // mask.png whenever a flatten has been applied.
+        bool useFlattenedAlpha = _item.FlattenedFile != null;
         bool ok = await Task.Run(() =>
         {
-            using SKBitmap? maskForTrace = BitmapIO.DecodeAsRgba8888(Path.Combine(folder, "mask.png"));
+            using SKBitmap? maskForTrace = useFlattenedAlpha
+                ? ExtractAlphaAsMask(cutout)
+                : BitmapIO.DecodeAsRgba8888(Path.Combine(folder, CutoutCompositor.MaskFileName));
             if (maskForTrace == null) return false;
             IReadOnlyList<Contour> contours = ContourTracer.Trace(maskForTrace);
             string svg = ContourTracer.ToSvg(contours, width, height, "#1FAE82");
@@ -627,5 +857,10 @@ public partial class EditViewModel : ObservableObject
         _cutout = null;
         PreviewBitmap?.Dispose();
         PreviewBitmap = null;
+        // _flattenSource: owned solely by this VM (never handed to a View by reference the way _image/_mask
+        // are, see MaskEditorView's own remarks on that different ownership contract) -- safe and necessary to
+        // dispose unconditionally here, unlike _image/_mask just above.
+        _flattenSource?.Dispose();
+        _flattenSource = null;
     }
 }

@@ -26,6 +26,13 @@ public static class CutoutCompositor
     public const string MaskFileName = "mask.png";
     public const string CutoutFileName = "cutout.png";
     public const string ThumbFileName = "thumb.png";
+    /// <summary>RGBA PNG result of the manual flatten tool (LogoExtract.Core.Warp.MeshWarp.Apply run on
+    /// cutout.png) -- written directly by EditViewModel.ApplyFlattenAsync, not through a shared writer method
+    /// here like WriteMask/WriteCutoutAndThumb, since flatten has no accompanying mask/thumb file that needs to
+    /// stay in lockstep with it. Still named here (not as a string literal at the call site) for the same reason
+    /// CutoutFileName/ThumbFileName are: the on-disk filename and the ItemState transition that claims it exists
+    /// (ItemStore.MarkFlattened) must never drift apart.</summary>
+    public const string FlattenedFileName = "flattened.png";
 
     public static void WriteMask(SKBitmap mask, string folder)
     {

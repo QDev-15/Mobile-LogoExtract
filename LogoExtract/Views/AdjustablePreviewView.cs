@@ -44,6 +44,56 @@ public sealed class AdjustablePreviewView : SKCanvasView
     public static readonly BindableProperty SaturationProperty =
         BindableProperty.Create(nameof(Saturation), typeof(double), typeof(AdjustablePreviewView), 0.0, propertyChanged: OnAdjustChanged);
 
+    // White balance (added 2026-11-12, closing the TODO this class's own BuildColorMatrix doc comment used to
+    // flag): three separate doubles rather than a tuple/record bindable property, so EditPage.xaml can bind each
+    // one straight to EditViewModel's own WhiteBalanceR/G/B without a value converter. Default 1.0 each = no
+    // correction, matching ColorAdjust.WhiteBalance's own default.
+    public static readonly BindableProperty WhiteBalanceRProperty =
+        BindableProperty.Create(nameof(WhiteBalanceR), typeof(double), typeof(AdjustablePreviewView), 1.0, propertyChanged: OnAdjustChanged);
+
+    public static readonly BindableProperty WhiteBalanceGProperty =
+        BindableProperty.Create(nameof(WhiteBalanceG), typeof(double), typeof(AdjustablePreviewView), 1.0, propertyChanged: OnAdjustChanged);
+
+    public static readonly BindableProperty WhiteBalanceBProperty =
+        BindableProperty.Create(nameof(WhiteBalanceB), typeof(double), typeof(AdjustablePreviewView), 1.0, propertyChanged: OnAdjustChanged);
+
+    /// <summary>True while the "Lấy mẫu màu" (pick neutral point) tool is armed -- the next quick tap on this
+    /// view samples a pixel instead of being treated as a potential double-tap-to-reset. Not a propertyChanged
+    /// repaint trigger (unlike the adjust properties above): arming/disarming doesn't change what's drawn, only
+    /// how the next tap is interpreted.</summary>
+    public static readonly BindableProperty EyedropperArmedProperty =
+        BindableProperty.Create(nameof(EyedropperArmed), typeof(bool), typeof(AdjustablePreviewView), false);
+
+    public double WhiteBalanceR
+    {
+        get => (double)GetValue(WhiteBalanceRProperty);
+        set => SetValue(WhiteBalanceRProperty, value);
+    }
+
+    public double WhiteBalanceG
+    {
+        get => (double)GetValue(WhiteBalanceGProperty);
+        set => SetValue(WhiteBalanceGProperty, value);
+    }
+
+    public double WhiteBalanceB
+    {
+        get => (double)GetValue(WhiteBalanceBProperty);
+        set => SetValue(WhiteBalanceBProperty, value);
+    }
+
+    public bool EyedropperArmed
+    {
+        get => (bool)GetValue(EyedropperArmedProperty);
+        set => SetValue(EyedropperArmedProperty, value);
+    }
+
+    /// <summary>Fired on a quick tap while <see cref="EyedropperArmed"/> is true -- the tapped location, as
+    /// NORMALIZED (0..1, resolution-independent) bitmap-space coordinates, same convention WarpGrid's own
+    /// displacements use. The caller (EditPage code-behind, forwarding to EditViewModel.PickWhiteBalance) maps
+    /// this onto the FULL-resolution cutout, since this view only ever shows the downscaled PreviewBitmap.</summary>
+    public event Action<SKPoint>? ColorPicked;
+
     public SKBitmap? SourceBitmap
     {
         get => (SKBitmap?)GetValue(SourceBitmapProperty);
@@ -176,7 +226,15 @@ public sealed class AdjustablePreviewView : SKCanvasView
                 if (e.ActionType == SKTouchAction.Released && _activeTouches.Count == 0)
                 {
                     bool quickTap = now - _pressTimestamp < 250 && Distance(e.Location, _pressLocation) < TapSlopPx;
-                    if (quickTap)
+                    if (quickTap && EyedropperArmed)
+                    {
+                        // Armed mode consumes the tap entirely -- a quick tap while armed samples a color, full
+                        // stop, never falls through to the double-tap-to-reset zoom logic below (the two would
+                        // otherwise fight over what a "quick tap" means).
+                        SKPoint? normalized = CanvasToNormalized(e.Location);
+                        if (normalized != null) ColorPicked?.Invoke(normalized.Value);
+                    }
+                    else if (quickTap)
                     {
                         bool isDoubleTap = now - _lastTapTimestamp < DoubleTapMs && Distance(e.Location, _lastTapLocation) < TapSlopPx;
                         if (isDoubleTap)
@@ -215,6 +273,26 @@ public sealed class AdjustablePreviewView : SKCanvasView
     private static float Distance(SKPoint a, SKPoint b) => MathF.Sqrt(MathF.Pow(a.X - b.X, 2) + MathF.Pow(a.Y - b.Y, 2));
     private static SKPoint Midpoint(SKPoint a, SKPoint b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
 
+    /// <summary>Maps a raw touch location (canvas pixels) to normalized (0..1) bitmap-space coordinates, using
+    /// the SAME fit/zoom/pan transform <see cref="OnPaintSurface"/> and <see cref="ClampPan"/> already compute
+    /// (duplicated here rather than factored out, consistent with how this file already duplicates this exact
+    /// 3-line calculation in those two places -- not introducing a new pattern, just following the existing
+    /// one). Returns null for a tap that landed outside the drawn image (the letterboxed background), since
+    /// sampling there would read whatever this view's own checkerboard/solid backing happens to be, not the
+    /// photo.</summary>
+    private SKPoint? CanvasToNormalized(SKPoint location)
+    {
+        if (_bitmap == null || CanvasSize.Width <= 0 || CanvasSize.Height <= 0) return null;
+        float baseScale = Math.Min(CanvasSize.Width / _bitmap.Width, CanvasSize.Height / _bitmap.Height);
+        float scale = baseScale * _zoom;
+        float offX = (CanvasSize.Width - _bitmap.Width * scale) / 2 + _panX;
+        float offY = (CanvasSize.Height - _bitmap.Height * scale) / 2 + _panY;
+        float nx = (location.X - offX) / (scale * _bitmap.Width);
+        float ny = (location.Y - offY) / (scale * _bitmap.Height);
+        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+        return new SKPoint(nx, ny);
+    }
+
     private void OnPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
     {
         SKCanvas canvas = e.Surface.Canvas;
@@ -226,15 +304,19 @@ public sealed class AdjustablePreviewView : SKCanvasView
         float offX = (CanvasSize.Width - _bitmap.Width * scale) / 2 + _panX;
         float offY = (CanvasSize.Height - _bitmap.Height * scale) / 2 + _panY;
 
-        // Two INDEPENDENT color matrices composed, not one hand-merged matrix: the 2026-10-28 brightness/contrast
-        // bug (see BuildColorMatrix's own remarks) came from exactly this kind of manual 4x5 matrix arithmetic,
-        // so saturation gets its own matrix (BuildSaturationMatrix) instead of a third term folded into the same
-        // one. CreateCompose(outer, inner) applies inner first -- brightness/contrast first, saturation second,
-        // matching the order LogoExtract.Core.Imaging.ColorAdjustFilter.Apply's own two passes run in, so the
-        // live preview and the full-resolution export agree.
+        // THREE independent color matrices composed, not one hand-merged matrix: the 2026-10-28 brightness/
+        // contrast bug (see BuildColorMatrix's own remarks) came from exactly this kind of manual 4x5 matrix
+        // arithmetic, so saturation (BuildSaturationMatrix) and white balance (BuildWhiteBalanceMatrix, added
+        // 2026-11-12) each get their own matrix instead of a term folded into the same one. CreateCompose(outer,
+        // inner) applies inner first -- white balance first, brightness/contrast second, saturation third,
+        // matching LogoExtract.Core.Imaging.ColorAdjustFilter.Apply's own pass order EXACTLY (white balance is
+        // the first thing that LUT's BuildLut applies, before the contrast/brightness shift; saturation is a
+        // separate pass after), so the live preview and the full-resolution export always agree.
+        using SKColorFilter whiteBalanceFilter = SKColorFilter.CreateColorMatrix(BuildWhiteBalanceMatrix(WhiteBalanceR, WhiteBalanceG, WhiteBalanceB));
         using SKColorFilter brightnessContrastFilter = SKColorFilter.CreateColorMatrix(BuildColorMatrix(Brightness, Contrast));
         using SKColorFilter saturationFilter = SKColorFilter.CreateColorMatrix(BuildSaturationMatrix(Saturation));
-        using SKColorFilter composedFilter = SKColorFilter.CreateCompose(saturationFilter, brightnessContrastFilter);
+        using SKColorFilter whiteBalanceThenBrightnessContrast = SKColorFilter.CreateCompose(brightnessContrastFilter, whiteBalanceFilter);
+        using SKColorFilter composedFilter = SKColorFilter.CreateCompose(saturationFilter, whiteBalanceThenBrightnessContrast);
         using var paint = new SKPaint { ColorFilter = composedFilter };
         canvas.Save();
         canvas.Translate(offX, offY);
@@ -297,8 +379,9 @@ public sealed class AdjustablePreviewView : SKCanvasView
     /// exact same (c - 0.5) * contrast + 0.5 + brightness shift ColorAdjustFilter's LUT does on byte values
     /// 0..255, just pre-divided by 255 so it lands in the 0..1 range this API actually expects.</para>
     ///
-    /// White balance is intentionally NOT included here: EditPage has no white-balance control yet (PLAN.md 2.4,
-    /// not built), so ColorAdjust.WhiteBalance is always its default (1,1,1) in this app today.</summary>
+    /// White balance is a SEPARATE matrix (<see cref="BuildWhiteBalanceMatrix"/>, added 2026-11-12 alongside
+    /// EditPage's "Lấy mẫu màu" eyedropper tool), composed as the INNERMOST filter at the call site -- not folded
+    /// in here, for the same "don't hand-merge matrices" reason BuildSaturationMatrix is already separate.</summary>
     private static float[] BuildColorMatrix(double brightnessNorm, double contrastNorm)
     {
         float brightness = (float)brightnessNorm; // already -1..1 -- a full-scale shift on a 0..1 channel
@@ -332,4 +415,20 @@ public sealed class AdjustablePreviewView : SKCanvasView
             0, 0, 0, 1, 0
         ];
     }
+
+    /// <summary>A pure per-channel multiplicative scale, no offset -- matches
+    /// LogoExtract.Core.Imaging.ColorAdjustFilter.BuildLut's own first step EXACTLY (<c>x = v * whiteBalanceMultiplier</c>,
+    /// before the contrast/brightness shift), expressed as a diag(r,g,b,1) color matrix instead of a lookup
+    /// table. Composed as the INNERMOST filter at the call site (applied to the pixel first, before
+    /// brightness/contrast/saturation) for the same reason: ColorAdjustFilter's LUT applies white balance before
+    /// anything else, so the live preview has to match that exact order or a slider-dragged preview would stop
+    /// agreeing with the full-resolution export the instant both white balance and brightness/contrast are
+    /// non-default at once.</summary>
+    private static float[] BuildWhiteBalanceMatrix(double r, double g, double b) =>
+    [
+        (float)r, 0, 0, 0, 0,
+        0, (float)g, 0, 0, 0,
+        0, 0, (float)b, 0, 0,
+        0, 0, 0, 1, 0
+    ];
 }

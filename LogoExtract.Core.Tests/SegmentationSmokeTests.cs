@@ -26,7 +26,7 @@ public class SegmentationSmokeTests
         Assert.True(File.Exists(samplePath), $"Sample not found: {samplePath}");
 
         using SKBitmap image = SKBitmap.Decode(samplePath) ?? throw new InvalidOperationException("Decode failed");
-        using var service = new U2NetSegmentationService(modelPath);
+        using var service = new U2NetSegmentationService(modelPath, SegmentationProvider.Cpu);
         SegmentationResult result = service.Segment(image);
 
         using var composited = new SKBitmap(image.Width, image.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);

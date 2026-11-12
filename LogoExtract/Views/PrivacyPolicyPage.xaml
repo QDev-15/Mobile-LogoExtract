@@ -39,11 +39,13 @@
 
     <ScrollView>
         <VerticalStackLayout Padding="20,4,20,28">
-            <Label Style="{StaticResource Hint}" Text="Cập nhật lần cuối: 28/10/2026" />
+            <Label Style="{StaticResource Hint}" Text="Cập nhật lần cuối: 12/11/2026" />
 
             <Label Text="Tổng quan" Style="{StaticResource PolicyHeading}" />
             <Label Style="{StaticResource PolicyBody}"
                    Text="Logo Extract tách nền, làm sạch và vector hoá logo từ ảnh do bạn chụp hoặc chọn. Toàn bộ xử lý diễn ra ngay trên điện thoại; chính sách này giải thích dữ liệu nào được lưu, lưu ở đâu, và bên thứ ba nào (nếu có) được dùng." />
+            <Label Style="{StaticResource PolicyBody}" Margin="0,8,0,0" FontFamily="OpenSansSemibold"
+                   Text="Nói ngắn gọn: chính Logo Extract không thu thập bất kỳ thông tin cá nhân nào của bạn. Bên duy nhất có thể thu thập thông tin là SDK quảng cáo (mục bên dưới) — nếu bạn nâng cấp lên Pro (gỡ quảng cáo), SDK quảng cáo không còn chạy nữa, nghĩa là không có bên nào, kể cả bên thứ ba, thu thập bất kỳ thông tin gì từ bạn." />
 
             <Label Text="Dữ liệu được lưu trực tiếp" Style="{StaticResource PolicyHeading}" />
             <Label Style="{StaticResource PolicyBody}"
@@ -51,7 +53,7 @@
 
             <Label Text="Bên thứ ba" Style="{StaticResource PolicyHeading}" />
             <Label Style="{StaticResource PolicyBody}"
-                   Text="Ứng dụng dùng một bên thứ ba duy nhất để hiển thị quảng cáo:" />
+                   Text="Ứng dụng dùng các bên thứ ba sau CHỈ KHI bạn chưa mua Pro — mua Pro tắt hẳn quảng cáo, SDK quảng cáo không còn chạy nữa, nên dòng LevelPlay/ironSource dưới đây không còn áp dụng:" />
             <Border Style="{StaticResource Card}" Margin="0,8,0,0">
                 <VerticalStackLayout Spacing="2">
                     <Label Text="LevelPlay / ironSource (mediation quảng cáo)" FontFamily="OpenSansSemibold" FontSize="13"
@@ -60,8 +62,14 @@
                            Text="Hiển thị banner quảng cáo trong ứng dụng, có thể thu thập một số dữ liệu thiết bị/quảng cáo theo chính sách riêng của ironSource và các mạng quảng cáo mà nó kết nối tới." />
                 </VerticalStackLayout>
             </Border>
-            <Label Style="{StaticResource PolicyBody}" Margin="0,10,0,0"
-                   Text="Ứng dụng không có tính năng mua trong ứng dụng (IAP) nên không dùng bất kỳ SDK thanh toán nào." />
+            <Border Style="{StaticResource Card}" Margin="0,8,0,0">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="Google Play Billing" FontFamily="OpenSansSemibold" FontSize="13"
+                           TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+                    <Label Style="{StaticResource Hint}"
+                           Text="Xử lý giao dịch khi bạn chọn mua &quot;Gỡ quảng cáo&quot; (Pro). Google Play xử lý thông tin thanh toán của bạn; ứng dụng chỉ nhận lại trạng thái đã mua hay chưa, không thấy và không lưu thông tin thẻ/thanh toán." />
+                </VerticalStackLayout>
+            </Border>
 
             <Label Text="Quyền truy cập" Style="{StaticResource PolicyHeading}" />
             <Border Style="{StaticResource Card}">

@@ -119,9 +119,30 @@ public sealed class ItemStore
 
     /// <summary>Sends an item back to square one so a fresh segmentation run can claim it -- the dashboard's
     /// "Tách lại nền" uses this to flip the badge to "Đang tách nền" and drop the old cutout right away, before
-    /// the (possibly slow) model call even starts.</summary>
+    /// the (possibly slow) model call even starts.
+    ///
+    /// <para>Also drops <see cref="LogoItem.FlattenedFile"/>/<see cref="LogoItem.Warp"/> (added 2026-11-12,
+    /// alongside the flatten tool itself) -- a FlattenedFile is a warp of THIS cutout's exact pixels; once
+    /// CutoutFile is about to be re-segmented from scratch, the old flattened result (and the grid that produced
+    /// it) no longer correspond to anything real and would silently show/export warped garbage if left behind,
+    /// the same class of staleness bug this method already exists to avoid for CutoutFile/ThumbFile.</para></summary>
     public LogoItem ResetToImported(string id) =>
-        Update(id, i => i with { State = ItemState.Imported, CutoutFile = null, ThumbFile = null });
+        Update(id, i => i with { State = ItemState.Imported, CutoutFile = null, ThumbFile = null, FlattenedFile = null, Warp = null });
+
+    /// <summary>The one place that claims the manual flatten tool (mesh-warp grid) produced a usable result --
+    /// mirrors <see cref="MarkSegmented"/>'s own contract/reasoning above. Deliberately only ever moves the
+    /// pipeline state FORWARD: an item already past Flattened (i.e. already Vectorized) keeps its current
+    /// State -- revisiting the flatten tool on an already-finished item to tweak the grid must not downgrade its
+    /// dashboard badge/status back to "Flattened", even though FlattenedFile/Warp themselves are still updated to
+    /// the latest edit either way. Caller must have already written <see cref="CutoutCompositor.FlattenedFileName"/>
+    /// to disk before calling this.</summary>
+    public LogoItem MarkFlattened(string id, WarpGrid grid) =>
+        Update(id, i => i with
+        {
+            State = i.State == ItemState.Vectorized ? i.State : ItemState.Flattened,
+            FlattenedFile = CutoutCompositor.FlattenedFileName,
+            Warp = grid,
+        });
 
     private void Save(LogoItem item)
     {

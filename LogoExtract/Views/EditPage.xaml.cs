@@ -40,6 +40,15 @@ public partial class EditPage : ContentPage
         // brush sub-toolbar is visible right now -- so Editor is already showing the right thing the moment the
         // user taps "Chỉnh sửa".
         _vm.ImagesReady += (image, mask) => MainThread.BeginInvokeOnMainThread(() => Editor.Load(image, mask));
+        // Same shape, for the flatten tool (added 2026-11-12): pushes the freshly-decoded raw cutout + restored
+        // grid into FlattenEditor every time OpenFlattenToolAsync fires it.
+        _vm.FlattenReady += (source, grid) => MainThread.BeginInvokeOnMainThread(() => FlattenEditor.Load(source, grid));
+        // Opposite direction, for the "Lấy mẫu màu" eyedropper (added 2026-11-12): PreviewCanvas reports where
+        // the user tapped (normalized, resolution-independent) while armed; the VM maps that onto the
+        // full-resolution cutout. Already on the UI thread (SKCanvasView's own Touch handler), no
+        // BeginInvokeOnMainThread needed here unlike the two subscriptions above (those come from a background
+        // Task.Run continuation in EditViewModel).
+        PreviewCanvas.ColorPicked += point => _vm.PickWhiteBalance(point);
     }
 
     protected override void OnDisappearing()
@@ -70,6 +79,22 @@ public partial class EditPage : ContentPage
     }
 
     private void OnCancelRegion(object? sender, EventArgs e) => _vm.CancelRegionSelect();
+
+    // Local to FlattenGridView, nothing for the VM to know about until "Áp dụng" -- see that view's own ResetGrid remarks.
+    private void OnResetFlattenGrid(object? sender, EventArgs e) => FlattenEditor.ResetGrid();
+
+    private void OnCancelFlatten(object? sender, EventArgs e) => _vm.CancelFlattenTool();
+
+    // Same _actionInFlight double-tap guard as OnDone/OnConfirmRegion above, and the same reason: "Áp dụng" is a
+    // plain code-behind Clicked handler (not a [RelayCommand]) because it needs FlattenEditor.CurrentGrid, which
+    // a ViewModel RelayCommand can't reach without the ViewModel holding a reference to the View.
+    private async void OnApplyFlatten(object? sender, EventArgs e)
+    {
+        if (_actionInFlight) return;
+        _actionInFlight = true;
+        try { await _vm.ApplyFlattenAsync(FlattenEditor.CurrentGrid); }
+        finally { _actionInFlight = false; }
+    }
 
     private async void OnConfirmRegion(object? sender, EventArgs e)
     {

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="LogoExtract.Views.TermsGatePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:LogoExtract.ViewModels"
+    xmlns:views="clr-namespace:LogoExtract.Views"
+    x:DataType="vm:TermsGateViewModel"
+    Shell.NavBarIsVisible="False"
+    BackgroundColor="{AppThemeBinding Light={StaticResource BackgroundLight}, Dark={StaticResource BackgroundDark}}">
+
+    <!-- Owner's request, 2026-11-12: blocking gate shown once before the user ever reaches AppShell/HomePage —
+         see App.xaml.cs's own CreateMainPage and TermsGateViewModel's class doc comment for the full "why" and
+         the exact 3 outcomes. No Shell wraps this page at all (same reason SplashPage itself has none at this
+         point in the startup sequence: AppShell does not exist yet), so this is a plain full-bleed ContentPage,
+         not a routed Shell page — no back-arrow header, no ad banner (actively wrong to show one here: this
+         screen exists specifically for people who have NOT yet consented to ads, and a real Pro buyer never
+         sees this long enough for a banner to matter anyway). -->
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="24,36,24,16" Spacing="14">
+                <Label Text="Điều khoản sử dụng &amp; Quyền riêng tư" FontFamily="OpenSansSemibold" FontSize="21"
+                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}" />
+
+                <Label FontSize="14" LineHeight="1.35"
+                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}"
+                       Text="Logo Extract không thu thập, không lưu trữ và không gửi đi bất kỳ thông tin cá nhân nào của bạn. Toàn bộ ảnh và dữ liệu bạn tạo ra chỉ lưu trên máy này." />
+
+                <Label FontSize="14" LineHeight="1.35"
+                       TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}"
+                       Text="Ứng dụng có hiển thị quảng cáo để duy trì miễn phí, thông qua Unity LevelPlay (ironSource) và các mạng quảng cáo liên kết. Các mạng quảng cáo này có thể thu thập: mã quảng cáo (Advertising ID), thông tin thiết bị/hệ điều hành, vị trí gần đúng (qua IP), và hoạt động liên quan đến quảng cáo — theo chính sách riêng của họ, không phải của Logo Extract." />
+
+                <!-- The upsell moment — owner's own spec: "make this one visually stand out a bit, e.g. in a
+                     card". Secondary (pale mint tint) in Light, CardBackgroundDark in Dark — same "brand-tinted
+                     card" idiom as nowhere else in this app yet, picked over reusing plain Card (CardBackgroundLight
+                     is pure white, same as the page's own ScrollView area, so it would not visually "stand out"
+                     at all in Light theme; Secondary is the one existing token whose entire job is exactly this
+                     kind of pale brand-tinted highlight, see Colors.xaml remarks on Secondary/SecondaryDarkText). -->
+                <Border BackgroundColor="{AppThemeBinding Light={StaticResource Secondary}, Dark={StaticResource CardBackgroundDark}}"
+                        StrokeThickness="0" Padding="16,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <Label FontSize="14" FontFamily="OpenSansSemibold" LineHeight="1.35"
+                           TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                           Text="Nâng cấp Pro: gỡ bỏ hoàn toàn quảng cáo. Khi đó không có SDK quảng cáo nào chạy trong ứng dụng — nghĩa là không ai thu thập bất kỳ thông tin nào kể trên." />
+                </Border>
+
+                <!-- Checkbox row — label is ALSO tappable (ToggleAgreedCommand), a bigger target than the bare
+                     CheckBox alone, same convenience idea as this ViewModel's own doc comment explains. -->
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,8,0,0">
+                    <CheckBox Grid.Column="0" IsChecked="{Binding IsAgreed}" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Tôi đã đọc và đồng ý với nội dung trên" FontSize="13.5" VerticalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource TextPrimaryLight}, Dark={StaticResource TextPrimaryDark}}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ToggleAgreedCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </Grid>
+
+                <ActivityIndicator IsRunning="{Binding IsPurchaseBusy}" IsVisible="{Binding IsPurchaseBusy}" HeightRequest="24"
+                                   Color="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Fixed button tray, same "docked to the bottom edge gets top-corners-only / flat-bottom treatment"
+             idiom as this app's own EditPage toolbars (mobile-app-design.md §4.2) — except this tray is flush
+             with the actual screen bottom with no rounding at all, since there is nothing visually "docked onto"
+             below it to separate from (no Shell, no safe-area chrome past this). -->
+        <VerticalStackLayout Grid.Row="1" Spacing="10" Padding="24,14,24,20"
+                              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
+            <BoxView HeightRequest="0.6" Margin="-24,0,-24,4"
+                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+
+            <!-- Primary CTA: solid pill, same shape as every other primary action in this app (mobile-app-design.md §5.1). -->
+            <Button Text="{Binding BuyButtonText}" Command="{Binding PurchaseProCommand}"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{StaticResource PrimaryDarkText}"
+                    CornerRadius="22" HeightRequest="48" FontAttributes="Bold" />
+
+            <!-- Secondary/outlined CTA, disabled (and auto-dimmed by the stock Button style's own Disabled
+                 VisualState, Styles.xaml) until the checkbox above is ticked — owner's exact spec: "this button
+                 is disabled/non-interactive until the checkbox is ticked". -->
+            <Button Text="Đồng ý &amp; Tiếp tục" Command="{Binding AgreeAndContinueCommand}"
+                    IsEnabled="{Binding IsAgreed}"
+                    BackgroundColor="Transparent" BorderWidth="1.5"
+                    BorderColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                    TextColor="{AppThemeBinding Light={StaticResource Tertiary}, Dark={StaticResource PrimaryDark}}"
+                    CornerRadius="22" HeightRequest="48" FontAttributes="Bold" />
+
+            <!-- Tertiary/plain-text "give up" action — deliberately the least visually prominent of the three,
+                 same convention as every dialog's own outlined-cancel-is-secondary/filled-accept-is-primary
+                 pairing, just one rung further down since this one actually exits the app. -->
+            <Button Text="Từ chối &amp; Thoát" Command="{Binding DeclineAndExitCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}"
+                    FontSize="13" HeightRequest="44" />
+        </VerticalStackLayout>
+
+        <!-- Confirm/alert dialog overlay (purchase timeout/error) — spans both rows so it sits above the
+             button tray too, same "Grid.RowSpan over the whole root Grid" idiom as EditPage's own AppDialogOverlay. -->
+        <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="2" />
+    </Grid>
+</ContentPage>

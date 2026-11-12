@@ -1,8 +1,8 @@
 namespace LogoExtract;
 
-/// <summary>Which LevelPlay ad units this build requests. Same shape as DocScanner/PdfReader's AdsMode -- see
-/// LevelPlayConfig.cs's comment for why everything currently resolves to "no ads" (placeholder ids, app not yet
-/// registered on the LevelPlay dashboard).</summary>
+/// <summary>Which LevelPlay ad units this build requests. Same shape as DocScanner/PdfReader's AdsMode. AppKey +
+/// production ad unit ids are real (see LevelPlayConfig.cs/RealAdsConfig.cs) -- a <c>-p:AdsMode=Pro</c> Release
+/// build resolves to real production units.</summary>
 public static class AdsMode
 {
 #if ADS_MODE_PRO

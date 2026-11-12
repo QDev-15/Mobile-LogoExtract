@@ -1,11 +1,9 @@
 namespace LogoExtract;
 
 /// <summary>
-/// PRODUCTION ad unit ids. PLACEHOLDER (2026-10-27): owner has not created LogoExtract as its own app on the
-/// LevelPlay dashboard yet (needed before any real AppKey/ad unit ids exist for this app -- see
-/// LevelPlayConfig.cs's own comment). <see cref="HasRealIds"/> stays false until these are filled in for real,
-/// so a <c>-p:AdsMode=Pro</c> build of this placeholder state safely falls back to "no ads" rather than
-/// requesting a bogus id.
+/// PRODUCTION ad unit ids, real since 2026-11-02 (owner confirmed the LogoExtract app + ad units exist for real
+/// on the LevelPlay dashboard, 2026-11-12). <see cref="HasRealIds"/> is the guard that still protects a
+/// <c>-p:AdsMode=Pro</c> build against ever requesting a blank/placeholder id if these were ever cleared again.
 /// </summary>
 public static class RealAdsConfig
 {

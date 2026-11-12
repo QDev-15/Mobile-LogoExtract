@@ -25,6 +25,11 @@ public static class Icons
     public const string Camera = "";    // photo_camera -- "Chụp ảnh"
     public const string Refresh = ""; // refresh -- "Tách lại nền" (HomePage's status-override button)
     public const string Tune = ""; // tune -- "Chỉnh sửa" (merged edit screen bottom-toolbar button that opens the brush sub-toolbar, 2026-10-29)
+    // Codepoint copied verbatim from the sibling PdfReader repo's own Views/Icons.cs (same MaterialIcons-
+    // Regular.ttf, confirmed byte-identical via sha256) -- added 2026-11-12 for EditPage's new "Làm phẳng" bottom-toolbar
+    // button (mesh-warp flatten tool). view_module reads as a grid of squares, matching the draggable
+    // control-point grid this button opens.
+    public const string Grid = ""; // view_module -- "Làm phẳng" (opens the mesh-warp grid sub-toolbar)
 
     // Settings/About/Privacy (added 2026-10-28). Codepoints copied verbatim from the identical Material Icons
     // font in the sibling PdfReader repo's own Views/Icons.cs (same MaterialIcons-Regular.ttf file) -- written

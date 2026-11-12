@@ -2,19 +2,17 @@ namespace LogoExtract;
 
 /// <summary>
 /// Unity LevelPlay settings for DEV builds. Same split as DocScanner/PdfReader (LevelPlayConfig.cs / RealAdsConfig.cs /
-/// AdsMode.cs): sandbox/placeholder here, production ids only in <see cref="RealAdsConfig"/>, used only by a
+/// AdsMode.cs): sandbox here, production ids only in <see cref="RealAdsConfig"/>, used only by a
 /// <c>-p:AdsMode=Pro</c> build.
 ///
-/// <para><b>AppKey is a PLACEHOLDER (2026-10-27)</b>: LogoExtract is a brand-new app, not yet registered as its own
-/// app on the LevelPlay dashboard (that is a separate app entry per Unity/ironSource account app, cannot reuse
-/// DocScanner's or PdfReader's AppKey). Until the owner creates it there and pastes the real AppKey + ad unit ids
-/// here, <see cref="AdsMode.Resolve"/> returns null (no ads requested at all, in every build type) -- the ad SDK
-/// still initializes safely with a placeholder key but every LoadAd() call will just fail quietly, exactly the
-/// same "ads off until configured" behavior as a Dev build with no sandbox ids on the sibling apps.</para>
+/// <para>LogoExtract has its own app entry + real AppKey on the LevelPlay dashboard (owner confirmed 2026-11-12,
+/// production ad unit ids live in <see cref="RealAdsConfig"/>). No sandbox-specific ad unit ids have been created
+/// here -- <see cref="AdsMode.Resolve"/> falls through to the Debug-build "production units on a test device"
+/// branch instead (see its own comment), which is fine as long as the dev device is registered as a LevelPlay
+/// test device.</para>
 /// </summary>
 public static class LevelPlayConfig
 {
-    /// <summary>PLACEHOLDER -- replace once this app exists on the LevelPlay dashboard.</summary>
     public const string AppKey = "29199e055";
 
     public const string SandboxBannerAdUnitId = "";
