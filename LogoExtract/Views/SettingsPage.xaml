@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:LogoExtract.ViewModels"
              xmlns:views="clr-namespace:LogoExtract.Views"
+             xmlns:ads="clr-namespace:LogoExtract.AdsService;assembly=LogoExtract.AdsService.Core"
              x:Class="LogoExtract.Views.SettingsPage"
              x:DataType="vm:SettingsViewModel"
              Title="Cài đặt"
@@ -12,10 +13,9 @@
          (ImportPage, EditPage) all rely on AppShell's default native Shell nav bar for Back +
          Title instead of hand-rolling one (only HomePage, the Shell root, overrides it). Settings/About/Privacy
          follow that same in-app convention rather than PdfReader/Minesweeper's hand-rolled header, which is why
-         no ArrowBack glyph was added to Icons.cs for this pass. No AppDialogOverlay/ad banner either: this
-         page has no action that needs a confirm dialog, and this app only places its ad banner on HomePage
-         (Import/Segment/Edit carry none either), so Settings stays consistent with that, not PdfReader's
-         every-page-has-a-banner convention. -->
+         no ArrowBack glyph was added to Icons.cs for this pass. No AppDialogOverlay here: this page has no
+         action that needs a confirm dialog. Ad banner ADDED 2026-11-13 (owner's request: show it on every page,
+         always pinned to the TOP, not just HomePage) — see the wrapping Grid below. -->
     <ContentPage.Resources>
         <Style x:Key="Section" TargetType="Label">
             <Setter Property="FontSize" Value="12.5" />
@@ -43,7 +43,13 @@
         </Style>
     </ContentPage.Resources>
 
-    <ScrollView>
+    <!-- Ad banner pinned to its own fixed Auto row at the TOP, outside the ScrollView (same "fixed row, not
+         inside the scrolling content" convention mobile-app-design.md §5.7 already uses for the bottom-pinned
+         case) — it stays visible and in a stable position while the settings list scrolls underneath it,
+         instead of scrolling away with the content. Takes no space when no ad is loaded. -->
+    <Grid RowDefinitions="Auto,*">
+        <ads:AdBannerSurface x:Name="AdBanner" Grid.Row="0" />
+    <ScrollView Grid.Row="1">
         <VerticalStackLayout Padding="0,16,0,24">
 
             <!-- Pro/Billing (owner's request, 2026-10-29, "thêm chức năng mua bản quyền mua pro giống như các
@@ -226,4 +232,5 @@
                    TextColor="{AppThemeBinding Light={StaticResource TextSecondaryLight}, Dark={StaticResource TextSecondaryDark}}" />
         </VerticalStackLayout>
     </ScrollView>
+    </Grid>
 </ContentPage>

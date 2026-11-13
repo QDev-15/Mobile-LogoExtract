@@ -413,3 +413,131 @@ mở app đầu tiên như bình thường, không cần owner làm gì thêm ch
 3. Nếu owner có ý định đổi nội dung gate sau này (câu chữ điều khoản), nhớ bump `TermsGatePage.TermsAcceptedKey`
    từ `"terms_accepted_v1"` sang `"terms_accepted_v2"` để ép mọi người đồng ý lại -- đã ghi rõ trong comment của
    hằng số đó và trong `App.xaml.cs`'s `CreateMainPage`.
+
+---
+
+## Đợt 2026-11-13: banner lên đầu-căn giữa + interstitial đếm 5 phút
+
+Owner hỏi "các view hiển thị ads đã ok chưa" kèm spec: banner luôn hiển thị phía trên căn giữa; interstitial hiện
+mỗi 5 phút (countdown), hiện xong thì reset lại countdown. Kiểm tra trước khi sửa: **cả 2 đều CHƯA đúng** --
+banner chỉ có trên HomePage, đặt ở thanh DƯỚI cùng (không phải trên); interstitial có ID thật
+(`RealAdsConfig.InterstitialAdUnitId`) nhưng không có bất kỳ chỗ nào gọi `PrepareInterstitial`/
+`ShowInterstitialIfReady` -- tồn tại trên dashboard nhưng chưa từng được kích hoạt trong code.
+
+- **`LogoExtract/Services/InterstitialCadenceService.cs`** (mới): vòng lặp `Task.Delay(5 phút)` rồi
+  `ShowInterstitialIfReady()` + `PrepareInterstitial()` ngay (chuẩn bị quả kế tiếp) -- countdown tự reset lại 5
+  phút sau mỗi lần, đúng yêu cầu, bất kể lần đó có thực sự hiện được ảnh hay không (đang tải dở/Pro thì
+  `ShowInterstitialIfReady` tự no-op, không cần `InterstitialCadenceService` tự biết gì về Pro).
+- **Quyết định quan trọng tự chọn (brief không nói rõ)**: `InterstitialCadenceService` được TẠO trong
+  `App.xaml.cs`'s constructor nhưng chỉ `Start()` sau khi đã QUA màn Terms Gate (đã đồng ý, hoặc đã mua Pro) --
+  không phải ngay từ constructor. Lý do: `Start()` gọi `PrepareInterstitial()` ngay, và khác với banner (vốn nằm
+  im hoàn toàn tới khi `AdBannerSurface` của 1 trang thực sự load), gọi hàm này sẽ chạm vào SDK ads + bắt đầu
+  request mạng thật ngay lập tức -- nếu chạy từ constructor thì sẽ tải quảng cáo TRƯỚC KHI người dùng kịp thấy/
+  đồng ý màn Terms Gate, phá đúng mục đích của popup chặn vừa làm đợt trước (ads chỉ được chạy sau khi đồng ý).
+  Sửa: `App.xaml.cs`'s `CreateMainPage()` gọi `_interstitialCadence.Start()` ở cả 2 nhánh tạo `AppShell` (bỏ qua
+  gate vì đã đồng ý/đã Pro, và trong callback `createShell` của `TermsGatePage` sau khi người dùng đồng ý/mua Pro
+  ngay tại gate).
+- **Banner lên đầu-căn giữa + thêm vào 3 trang còn thiếu** (giao `mobile-app-designer` agent, agent tự làm, tôi
+  đọc lại code xác nhận đúng): `HomePage.xaml` -- banner dời từ hàng dưới cùng (`Grid.Row="2"` cũ, đã bị xoá hẳn
+  vì không còn gì khác để giữ) lên hàng Auto mới ngay dưới header (`RowDefinitions` đổi `"Auto,*,Auto"` ->
+  `"Auto,Auto,*"`), FAB/reveal-panel/tap-catcher/dialog-overlay đều cập nhật `Grid.Row`/`Grid.RowSpan` đúng theo
+  số hàng mới, FAB vẫn nằm sát đáy màn hình như cũ (chỉ không còn khoảng trống hình-banner dự trữ dưới nó).
+  `EditPage.xaml`/`SettingsPage.xaml`/`AboutPage.xaml` (trước đó KHÔNG có banner nào): mỗi trang được bọc thêm 1
+  Grid ngoài `RowDefinitions="Auto,*"` (banner ở Row 0, nội dung cũ nguyên vẹn chuyển vào Row 1) -- không sửa
+  code-behind nào vì không named-element nào bị ảnh hưởng. Cố ý KHÔNG thêm vào `SplashPage.xaml`/
+  `TermsGatePage.xaml` (ads phải im hoàn toàn trước khi đồng ý điều khoản, đã quyết định đợt trước)/
+  `PrivacyPolicyPage.xaml`. Banner không cần wrapper căn giữa riêng -- native adaptive banner bên trong
+  `AdBannerSurface` đã tự `Gravity=CenterHorizontal` từ trước.
+- Build `LogoExtract.csproj -c Debug -f net10.0-android`: **BUILD SUCCEEDED, 0 lỗi** (437 warning, toàn bộ có từ
+  trước, đã lọc log theo tên file để xác nhận -- kiểm tra độc lập, không chỉ tin báo cáo của agent).
+- **Chưa làm (lúc viết đoạn này)**: chưa cài/chạy thử trên máy thật hoặc máy ảo -- xem đợt ngay dưới, owner sau đó
+  tự mở máy ảo BlueStacks và yêu cầu test trực tiếp trên đó.
+
+---
+
+## Đợt 2026-11-13 (tiếp): test thật trên BlueStacks -- xác nhận banner, phát hiện + revert 1 bug điều hướng, build AAB versionCode 4
+
+Owner hỏi "bạn có thể test trên bluestack không?". BlueStacks đã cài nhưng chưa từng tạo máy ảo (không có GUI
+control trong phiên CLI này để qua được wizard tạo máy lần đầu) -- owner tự mở máy ảo, tôi kết nối qua
+`adb connect 127.0.0.1:5555` và test hoàn toàn qua adb (screenshot, input tap, uiautomator dump, logcat).
+
+**Lưu ý rủi ro ads thật đã thống nhất với owner trước khi test**: máy BlueStacks này KHÔNG đăng ký làm test
+device trên dashboard LevelPlay -- owner đồng ý chấp nhận test nhưng yêu cầu **fake hiển thị banner** (không chờ
+ads thật tải, vì owner đã tắt sandbox id nên chắc chắn không có gì hiển thị) chỉ để xác nhận ĐÚNG VỊ TRÍ layout.
+Đã tạm thời sửa `AdBannerSurface.Apply()` ép `IsVisible=true` + `HeightRequest=50` + nền màu magenta (hack
+TẠM, đã gỡ sạch ở cuối đợt, xem bên dưới) để kiểm tra layout mà không cần gọi mạng ads thật.
+
+### 1. Xác nhận banner trên-căn giữa: ĐÚNG trên cả 4 trang
+
+Ảnh chụp thật qua `adb exec-out screencap`: HomePage (ngay dưới header), SettingsPage, AboutPage (đều đúng vị trí
+hàng Auto ngay dưới header/thanh tiêu đề, full-width, native banner tự căn giữa ngang) -- khớp đúng những gì agent
+thiết kế đã làm và tôi đã đọc lại code xác nhận trước đó. EditPage không test trực tiếp được (cần nhập + tách nền
+1 ảnh thật, tốn nhiều bước), nhưng cấu trúc code (Grid bọc ngoài `Auto,*`) giống hệt pattern đã xác nhận đúng ở
+AboutPage/SettingsPage nên độ tin cậy cao dù chưa có ảnh chụp trực tiếp.
+
+### 2. Phát hiện bug thật: HomePage mất banner vĩnh viễn sau khi rời trang 1 lần -- ĐÃ THỬ SỬA 2 CÁCH, CẢ HAI ĐỀU BỊ REVERT
+
+Trong lúc test, phát hiện: banner (native view DÙNG CHUNG cho cả app, thiết kế có chủ đích để tiết kiệm hiệu
+năng/không tải lại ads mỗi lần chuyển trang) bị "cướp" sang trang vừa ghé thăm và KHÔNG BAO GIỜ quay lại HomePage
+nữa, dù quay lại Home bao nhiêu lần -- vì HomePage là `ShellContent` duy nhất, bị Shell giữ cố định (cache) suốt
+phiên app, nên `AdBannerSurface` của riêng Home chỉ `Loaded` đúng 1 lần, không có cơ hội "đòi lại" view đã bị
+trang khác lấy mất. 3 trang còn lại (Edit/Settings/About) không bị vì chúng `AddTransient` + push qua
+`Shell.Current.GoToAsync`, luôn tạo instance mới mỗi lần ghé thăm.
+
+**Đã thử sửa 2 cách, CẢ HAI ĐỀU LÀM HỎNG ĐIỀU HƯỚNG BACK CỦA SHELL (nặng hơn hẳn lỗi gốc) -- đã revert sạch cả
+hai, không giữ lại trong code**:
+1. `Handler = null` rồi `ToHandler(context)` (cách chuẩn MAUI hay dùng để ép tạo lại Handler) -- gọi lại đúng
+   `CreatePlatformView` nhưng Grid cha không tự động chèn lại native view mới vào cây hiển thị thật (chỉ tạo
+   Handler mới trong "chân không", không ai báo cho Grid biết mà chèn) -- banner vẫn không hiện.
+2. Gỡ rồi chèn lại chính `AdBannerSurface` trong `Children` của Grid cha (đúng cơ chế MAUI dùng để tái chế ô
+   trong `CollectionView`) -- CÁCH NÀY banner hiện lại đúng, nhưng **làm hỏng hẳn nút Back/`Shell.GoToAsync("..")`
+   cho CẢ PHẦN ĐỜI CÒN LẠI của tiến trình app** -- xác nhận lặp lại nhiều lần, kể cả từ tiến trình mới khởi động
+   sạch (`am force-stop` rồi mở lại): lần bấm Back đầu tiên sau khi 1 trang bất kỳ gọi hàm sửa lỗi này không bao
+   giờ hoạt động nữa, kể cả ở những trang hoàn toàn không liên quan (thử cả `PrivacyPolicyPage`, không có banner,
+   không gọi hàm sửa lỗi gì -- vẫn bị kẹt, chứng tỏ Shell bị hỏng trạng thái nội bộ chung, không phải riêng từng
+   trang). Hoãn việc gỡ/chèn sang tick UI kế tiếp (`MainThread.BeginInvokeOnMainThread`, chạy sau khi
+   `OnAppearing` và animation chuyển trang của Shell đã xong) KHÔNG sửa được vấn đề. Cô lập bằng thử nghiệm: đổi
+   hàm sửa lỗi thành no-op (`return;` ngay dòng đầu) -- Back hoạt động lại bình thường ngay; bật lại logic thật
+   (dù đã hoãn sang tick sau) -- Back hỏng lại ngay, lặp lại nhiều lần đều ra kết quả giống nhau.
+
+**Quyết định: KHÔNG giữ bản sửa nào** -- lỗi gốc (thỉnh thoảng mất 1 banner impression trên Home sau khi đã ghé
+trang khác ít nhất 1 lần trong cùng phiên) chỉ là thiệt hại doanh thu nhỏ, không phải lỗi crash/sai chức năng;
+trong khi Back bị hỏng hẳn sẽ khiến app gần như không dùng được (kẹt ở Cài đặt/Giới thiệu, không thoát ra được
+trừ khi force-stop). Đánh đổi không đáng. `AdBannerSurface.cs` đã revert về đúng bản gốc agent đã viết (điều kiện
+`IsVisible = _ads is { AreAdsEnabled: true, IsBannerLoaded: true }`, không có hàm `Reclaim`/no-op nào còn sót
+lại), đã ghi chi tiết đầy đủ phát hiện này + 2 cách đã thử + lý do không chọn ngay trong doc comment của class đó
+để ai đọc lại sau không mất công thử lại đúng 2 cách đã biết không dùng được. **Known limitation, chưa sửa**: nếu
+sau này muốn thử sửa tiếp, nên test trên máy thật trước (nghi ngờ timing animation của Shell trên BlueStacks có
+thể không đại diện đúng cho máy thật) và/hoặc tìm cách báo lỗi này lên MAUI GitHub kèm repro tối thiểu.
+
+**Đã xác nhận Back hoạt động bình thường trở lại sau khi revert** (test lại y hệt kịch bản đã làm hỏng: Home ->
+Cài đặt -> Back -> về đúng Home, nhiều lần, tiến trình mới khởi động sạch).
+
+### 3. Gotcha gặp lại khi cài qua adb trên BlueStacks (không phải lỗi app)
+
+- `adb install` thuần (không qua `dotnet build -t:Run`/`-t:Install`) với bản Debug MẶC ĐỊNH (Fast Deployment bật)
+  CRASH NGAY khi mở: `No assemblies found in '.../files/.__override__/x86_64'` -- vì Fast Deployment cần bước
+  "deploy" riêng đẩy assembly managed sang máy, `adb install` thuần không làm bước đó. Thử `dotnet build -t:Run`
+  cũng KHÔNG chạy được trên BlueStacks: `error XA0137: 'run-as' command failed: setegid(AID_PACKAGE_INFO) failed:
+  Operation not permitted -- Fast Deployment is not currently supported on this device` (giống đúng gotcha đã ghi
+  trong CLAUDE.md của DocScanner cho PdfReader). **Cách đúng trên BlueStacks**: build với
+  `-p:EmbedAssembliesIntoApk=true -p:AndroidUseSharedRuntime=false` rồi `adb install -r` APK `-Signed.apk` bình
+  thường -- không cần bước deploy riêng, cài thẳng là chạy được.
+- BlueStacks tự đóng/crash 1 lần giữa phiên test (không rõ nguyên nhân từ phía tôi) -- owner tự mở lại, kết nối
+  lại bằng đúng `adb connect 127.0.0.1:5555` là đủ, không mất gì (app vẫn còn cài, chỉ cần `adb connect` lại).
+- `am start -n <pkg>/<activity>` (lấy đúng tên qua `adb shell cmd package resolve-activity --brief <pkg>`) để mở
+  app an toàn, không dùng `monkey` (gotcha đã ghi lần trước, random tap).
+
+### 4. Build Release AAB theo yêu cầu owner: Dev + AdsEnabled=false + versionCode 4
+
+Sau khi revert xong, owner yêu cầu: gỡ hack hiển thị fake, build bản Release AAB chế độ Dev, tắt hẳn ads,
+versionCode 4.
+
+- `LogoExtract.csproj`: `ApplicationVersion` 3 -> 4.
+- `dotnet publish LogoExtract/LogoExtract.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=aab
+  -p:AdsMode=Dev -p:AdsEnabled=false`: **BUILD SUCCEEDED**. File:
+  `LogoExtract/release/LogoExtract-1.0-4/LogoExtract-1.0-4.aab` (64,2 MB) + `mapping.txt` cùng thư mục.
+- `jarsigner -verify`: **"jar verified"** -- ký đúng bằng upload keystore thật, cảnh báo self-signed/no-timestamp
+  là bình thường như các lần build trước.
+- Xác nhận lại lần cuối trên BlueStacks (bản Debug, không phải chính AAB này) rằng Back hoạt động bình thường sau
+  khi revert, trước khi build bản Release.

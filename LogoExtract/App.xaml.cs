@@ -9,6 +9,7 @@ public partial class App : Application
 {
 	private readonly ILicenseService _license;
 	private readonly AppDialog _dialog;
+	private readonly InterstitialCadenceService _interstitialCadence;
 
 	public App(ILicenseService license, IAdsClient ads, AppDialog dialog)
 	{
@@ -40,6 +41,15 @@ public partial class App : Application
 		ads.AreAdsEnabled = !license.State.IsPro;
 		license.Changed += () => MainThread.BeginInvokeOnMainThread(() => ads.AreAdsEnabled = !license.State.IsPro);
 		_ = license.RefreshAsync(); // re-verify with Play on every launch (e.g. a purchase made on another device)
+
+		// Owner's spec, 2026-11-13: a full-screen interstitial every 5 minutes, countdown restarting after each
+		// attempt. Deliberately only CONSTRUCTED here, not started -- Start() calls IAdsClient.PrepareInterstitial,
+		// which (unlike the banner, which stays fully inert until some page's AdBannerSurface actually loads)
+		// would reach into the ad SDK and start a real network request immediately, i.e. before the terms gate
+		// has even been shown to someone who hasn't agreed to ads yet. See CreateMainPage: Start() is only ever
+		// called once the gate has actually been passed (already accepted, already Pro, or just now agreed/
+		// bought Pro), same moment AppShell itself first gets created.
+		_interstitialCadence = new InterstitialCadenceService(ads);
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)
@@ -78,7 +88,15 @@ public partial class App : Application
 	private Page CreateMainPage()
 	{
 		bool accepted = Preferences.Default.Get(Views.TermsGatePage.TermsAcceptedKey, false);
-		if (accepted || _license.State.IsPro) return new AppShell();
-		return new Views.TermsGatePage(_license, _dialog, () => new AppShell());
+		if (accepted || _license.State.IsPro)
+		{
+			_interstitialCadence.Start();
+			return new AppShell();
+		}
+		return new Views.TermsGatePage(_license, _dialog, () =>
+		{
+			_interstitialCadence.Start();
+			return new AppShell();
+		});
 	}
 }

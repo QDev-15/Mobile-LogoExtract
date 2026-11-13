@@ -14,7 +14,7 @@
          quá"): plain rows on a flat white page became rounded, shadowed cards on a pale page background; the
          bottom action became a bold pill matching those apps' primary CTA treatment; every toolbar button below
          this page now pairs an icon with its name (ToolButton), not an icon alone. -->
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- Header -->
         <Grid Grid.Row="0" Padding="20,18,20,14" ColumnDefinitions="*,Auto"
@@ -49,8 +49,17 @@
         <BoxView Grid.Row="0" HeightRequest="0.6" VerticalOptions="End"
                  Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
 
+        <!-- Ad banner, moved here from the bottom bar 2026-11-13 (owner's request: banner should always be at
+             the TOP of the screen, centered, not the bottom). Own Auto row right below the header: the control
+             is self-sizing (0 height until the ad network actually has a creative loaded), so this row takes no
+             space at all when no ad is loaded, same behavior it already had in the old bottom-bar row — it's
+             just the row's position that changed. No extra centering wrapper needed: the native adaptive-banner
+             view AdBannerSurface wraps is already internally gravity-centered, this row just needs to span the
+             page's full width, which it does by default (root Grid has no ColumnDefinitions). -->
+        <ads:AdBannerSurface x:Name="AdBanner" Grid.Row="1" />
+
         <!-- Empty state -->
-        <VerticalStackLayout Grid.Row="1" IsVisible="{Binding IsEmpty}"
+        <VerticalStackLayout Grid.Row="2" IsVisible="{Binding IsEmpty}"
                               VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Padding="40">
             <Label Text="{x:Static views:Icons.Gallery}" FontFamily="{x:Static views:Icons.FontFamily}" FontSize="56"
                    HorizontalOptions="Center"
@@ -63,7 +72,7 @@
 
         <!-- Items list. Bottom margin 96, not the old flat 14: reserves clearance so the last row isn't sat on
              top of by the new floating FAB (added 2026-10-29, see the FAB's own remarks below). -->
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Items}" IsVisible="{Binding IsEmpty, Converter={StaticResource InvertedBoolConverter}}"
+        <CollectionView Grid.Row="2" ItemsSource="{Binding Items}" IsVisible="{Binding IsEmpty, Converter={StaticResource InvertedBoolConverter}}"
                         Margin="16,14,16,96">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ItemRow">
@@ -150,7 +159,7 @@
              each file, reusing ItemsViewModel's own pre-existing IsBusy/BusyText rather than adding new state.
              #E61F1F1F is the same dark-pill literal this pattern uses portfolio-wide (not themed - it's a
              scrim-family color like the dialog overlay's #B3000000, meant to read the same in both themes). -->
-        <Border Grid.Row="1" IsVisible="{Binding IsBusy}" VerticalOptions="Start" HorizontalOptions="Center"
+        <Border Grid.Row="2" IsVisible="{Binding IsBusy}" VerticalOptions="Start" HorizontalOptions="Center"
                 Margin="0,14,0,0" Padding="14,8" StrokeThickness="0" BackgroundColor="#E61F1F1F">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="18" />
@@ -164,17 +173,15 @@
             </HorizontalStackLayout>
         </Border>
 
-        <!-- Bottom bar: ad banner only now (2026-10-29) - the old "Nhập ảnh" CTA pill that used to live in this
-             same Grid was replaced by the floating circular FAB below, which deliberately does NOT live inside
-             this Auto-height bar: it needs to float above it (and above the list), and this bar's own height
-             depends on the ad network's actual rendered banner height, which the FAB/reveal-panel anchoring
-             below intentionally doesn't need to know. -->
-        <Grid Grid.Row="2"
-              BackgroundColor="{AppThemeBinding Light={StaticResource CardBackgroundLight}, Dark={StaticResource CardBackgroundDark}}">
-            <BoxView HeightRequest="0.6" VerticalOptions="Start"
-                     Color="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
-            <ads:AdBannerSurface />
-        </Grid>
+        <!-- Bottom bar REMOVED (2026-11-13): it existed only to host the ad banner, which has now moved to its
+             own row at the top (right below the header, see above) per owner's request. With nothing left to
+             hold (its old "Nhập ảnh" CTA pill was already replaced by the floating FAB below back on
+             2026-10-29), this Auto row would just be a bare divider with nothing to divide — removed entirely
+             rather than kept as a no-op thin bar. The row count dropped from 3 to 2 content rows below the
+             header ("Auto,Auto,*" for header/ad/content instead of "Auto,*,Auto"); the FAB and reveal panel
+             below now anchor directly to the content row (Grid.Row="2", the trailing "*" row) instead of
+             RowSpan-ing across a content row + a since-removed bottom row, so they still rest at the bottom
+             edge of the screen exactly as before, just with no banner-shaped gap reserved under them anymore. -->
 
         <!-- Tap-outside-to-collapse catcher (owner left the exact collapse affordance to this pass' own
              judgment): fully transparent, only present/hit-testable while the tray is open, sits BELOW the FAB
@@ -189,15 +196,13 @@
         </Grid>
 
         <!-- The two revealed actions ("Chụp ảnh" / "Thư viện"), owner's request 2026-10-29: "animation trượt
-             lên rồi 2 button hiện lên... thay vì chuyển sang trang mới". Anchored to Grid.Row="1" +
-             Grid.RowSpan="2" (the list row + the bottom-bar row) with VerticalOptions="End" so it rests right
-             at the bottom bar's own top edge - the shared boundary between a "*" row and an "Auto" row is
-             exactly that edge, however tall the ad banner actually renders, so this never needs to guess the
-             banner's height. Margin bottom 96 = FAB height (64) + FAB's own bottom margin (16) + a 16 gap, so
-             it floats just above the FAB, never over the ad banner. Starts hidden/collapsed (Opacity 0,
-             TranslationY 24 - slightly low, so expanding visibly slides it up into place); HomePage.xaml.cs
-             drives the actual animation off IsAddExpanded, see its own remarks. -->
-        <VerticalStackLayout x:Name="AddActionsPanel" Grid.Row="1" Grid.RowSpan="2"
+             lên rồi 2 button hiện lên... thay vì chuyển sang trang mới". Anchored to Grid.Row="2" (the trailing
+             "*" content row, now that the bottom bar row is gone — see the "Bottom bar REMOVED" comment above)
+             with VerticalOptions="End" so it rests at the bottom edge of the screen. Margin bottom 96 = FAB
+             height (64) + FAB's own bottom margin (16) + a 16 gap, so it floats just above the FAB. Starts
+             hidden/collapsed (Opacity 0, TranslationY 24 - slightly low, so expanding visibly slides it up into
+             place); HomePage.xaml.cs drives the actual animation off IsAddExpanded, see its own remarks. -->
+        <VerticalStackLayout x:Name="AddActionsPanel" Grid.Row="2"
                               HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,96" Spacing="10"
                               Opacity="0" TranslationY="24" IsVisible="False">
             <Border HeightRequest="48" WidthRequest="224" StrokeThickness="0"
@@ -245,12 +250,12 @@
         </VerticalStackLayout>
 
         <!-- The FAB itself (owner's request, 2026-10-29: "nút nhập chuyển thành icon add (dấu +) icon tròn to
-             có hiệu ứng nổi căn giữa"): same RowSpan anchoring as the reveal panel above, so it floats centered
-             just above the ad banner regardless of the banner's real height, with the same colored-glow shadow
-             language the old CTA pill used (mobile-app-design.md §4.3 "Colored glow" row). FabIcon rotates
-             45° (+ -> x) on expand in HomePage.xaml.cs, so the FAB's own glyph signals its toggled state too,
-             not just the panel's presence (never encode a meaningful state in position/color alone). -->
-        <Border Grid.Row="1" Grid.RowSpan="2" HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,16"
+             có hiệu ứng nổi căn giữa"): same Grid.Row anchoring as the reveal panel above, so it floats centered
+             near the bottom of the screen, with the same colored-glow shadow language the old CTA pill used
+             (mobile-app-design.md §4.3 "Colored glow" row). FabIcon rotates 45° (+ -> x) on expand in
+             HomePage.xaml.cs, so the FAB's own glyph signals its toggled state too, not just the panel's
+             presence (never encode a meaningful state in position/color alone). -->
+        <Border Grid.Row="2" HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,16"
                 WidthRequest="64" HeightRequest="64" StrokeThickness="0"
                 BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
                 SemanticProperties.Description="Thêm ảnh mới">

@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:LogoExtract.ViewModels"
              xmlns:views="clr-namespace:LogoExtract.Views"
+             xmlns:ads="clr-namespace:LogoExtract.AdsService;assembly=LogoExtract.AdsService.Core"
              x:Class="LogoExtract.Views.EditPage"
              x:DataType="vm:EditViewModel"
              Title="Chỉnh sửa">
@@ -10,7 +11,14 @@
     <!-- Merged "tách logo khỏi nền" + "chỉnh sửa" screen (owner's request, 2026-10-29). Header unchanged (plain
          Shell back + title, same as before). No ScrollView — same reason as before this merge: zoom/pan on the
          image area fights a ScrollView wrapping the whole page. -->
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="16,10,16,0" RowSpacing="8">
+    <!-- Outer wrapper Grid (added 2026-11-13) just to host the ad banner above the existing content, instead of
+         renumbering any of the inner Grid's own 4 rows (sliders/image/sub-toolbars/main-toolbar) and their many
+         Grid.Row references below — lower risk than reshuffling an already-dense row layout. Auto row so it
+         takes no space when no ad is loaded (AdBannerSurface self-sizes to 0 height); the inner Grid keeps its
+         own Padding/RowSpacing exactly as before, unaffected by this wrapper. -->
+    <Grid RowDefinitions="Auto,*">
+        <ads:AdBannerSurface x:Name="AdBanner" Grid.Row="0" />
+        <Grid Grid.Row="1" RowDefinitions="Auto,*,Auto,Auto" Padding="16,10,16,0" RowSpacing="8">
 
         <!-- Độ sáng / Tương phản / Độ đậm màu sắc (saturation, new): label ABOVE, slider BELOW (owner's spec —
              previously label-left/slider-right). Double-tap any label resets that one tool to its default (0) —
@@ -210,5 +218,6 @@
 
         <!-- Confirm/alert dialog overlay — spans every row so it sits above both toolbars too. -->
         <views:AppDialogOverlay Grid.Row="0" Grid.RowSpan="4" />
+        </Grid>
     </Grid>
 </ContentPage>
