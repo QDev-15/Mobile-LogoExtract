@@ -131,6 +131,9 @@
 		     resolved version everywhere (same fix shape as DocScanner's own CameraX/Fragment pin). -->
 		<PackageReference Include="Xamarin.AndroidX.Fragment" Version="1.9.0" />
 		<PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+		<!-- Apache-2.0: Google Play In-App Updates (Platforms/Android/AndroidAppUpdate.cs), same package/version
+		     as the sibling PdfReader/DocScanner repos. -->
+		<PackageReference Include="Xamarin.Google.Android.Play.App.Update" Version="2.0.1" />
 	</ItemGroup>
 
 	<ItemGroup>
