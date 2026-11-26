@@ -18,7 +18,7 @@
 		<ApplicationId>btk.logoextract</ApplicationId>
 
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>4</ApplicationVersion>
+		<ApplicationVersion>5</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
 
@@ -52,6 +52,14 @@
 		     sibling PdfReader.csproj. SdkOnly (shrink only SDK/library assemblies, never this app's own code)
 		     measured just as fast as None on the same device while still trimming real size out of the APK. -->
 		<AndroidLinkMode>SdkOnly</AndroidLinkMode>
+		<!-- Obfuscation (Play Console "DEX code optimization" needs shrink/optimize/obfuscate each >= 25%,
+		     enforced from Feb 2027; AndroidLinkTool=r8 above already covers shrink/optimize). Needs .NET
+		     Android SDK 36.1.118+ (older ones hard-code the dontobfuscate R8 flag regardless of this
+		     property, same finding as PdfReader/DocScanner): this machine's installed Microsoft.Android.Sdk.Windows
+		     is already 36.1.118, confirmed by this project's own plain `dotnet build` output, so no build-release.ps1
+		     redirection is needed here unlike those two repos. Independent of AndroidLinkMode.Full's ONNX Runtime
+		     reflection risk above: this only renames private members' Java names, it does not remove or shrink code. -->
+		<AndroidR8ObfuscationMode>private-members</AndroidR8ObfuscationMode>
 	</PropertyGroup>
 
 	<!-- Upload-signing config (keystore path/passwords, AndroidPackageFormat=aab): lives in release\Signing.props,
